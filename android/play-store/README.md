@@ -14,12 +14,9 @@ Listing copy for supply lives in `fastlane/metadata/android/en-US/`. Phone crops
 
 ## Screenshots included
 
-### Phone (`screenshots/phone/`) — 1080 × 1920, WebView feed
+### Phone (`screenshots/phone/`) — 1080 × 1920, framed mockups
 
-1. `01-feed.png` — Following feed with refresh + Settings gear
-2. `02-feed-scrolled.png` — further down the timeline
-3. `03-settings.png` — Settings sheet (text size, filters, sign out)
+1. `01-feed.png` — Following feed in device frame
+2. `03-settings.png` — Settings sheet in device frame
 
-Capture the in-app x.com WebView, then crop to 1080×1920 (top-aligned) into this folder and `fastlane/metadata/android/en-US/images/phoneScreenshots/`.
-
-Optional extra: `icon/icon-1024.png` for other storefronts (not required by Play).
+Capture the in-app x.com WebView, compose framed mockups at 1080×1920, then copy into this folder and `fastlane/metadata/android/en-US/images/phoneScreenshots/`.

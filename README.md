@@ -3,6 +3,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 > Unofficial project. Not affiliated with, endorsed by, or sponsored by X Corp. or Twitter.
 
+<p>
+  <a href="https://apps.apple.com/us/app/robin-non-algorithmic-x/id6817063233"><img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on the App Store" height="40"></a>
+  &nbsp;
+  <a href="https://play.google.com/store/apps/details?id=org.evergreenlabs.robin"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="60"></a>
+</p>
+
 ## Why
 
 X is useful for staying current. Unfortunately, its default experience include a lot of distractions — promoted posts and pile-ons from people or non-human accounts you never followed. These distractions are not good for us. Some posts are half-truths, some replies are designed to trigger strong emotions intentionally. I think we can do better.
