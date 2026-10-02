@@ -5,13 +5,15 @@
 
 ## Why
 
-X is useful for staying current. Unfortunately, its default experience "For You" include a lot of noise — promoted posts and polarized pile-ons from people/bots you never followed.
+X is useful for staying current. Unfortunately, its default experience include a lot of distractions — promoted posts and pile-ons from people or non-human accounts you never followed. These distractions are not good for us. Some posts are half-truths, some replies are designed to trigger strong emotions intentionally. I think we can do better.
 
-Robin is built around three things that matter when you use X to stay informed:
+Robin is built around three things that matter:
 
-1. **Up-to-date news from people you follow** — without the distractions from people you never chose to listen to
-2. **A promotion-free experience** — no sponsored content mixed into your timeline.
-3. **No algorithmic feed** — nothing added by an algorithm, the ordering is purely chronological. Because we use our information stream to form opinions; it's very valuable to have a neutral feed.
+1. **Up-to-date news** — without the distractions from people you never chose to listen from
+2. **A promotion-free experience** — no sponsored content mixed into your timeline to influence
+3. **No algorithmic feed** — nothing added by an algorithm, the ordering is purely chronological.
+
+Because we use our information stream to form opinions; it's very valuable to have a neutral feed.
 
 Robin is a native **Android** and **iOS** client: an x.com WebView with filters that force the Following timeline and hide promoted noise. Sign-in is your normal X cookie session inside the WebView — there is no separate Robin backend.
 
