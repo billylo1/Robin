@@ -1,0 +1,1 @@
+Sign out clears your X session cleanly and returns you to login. App icon corners no longer show a black fringe.

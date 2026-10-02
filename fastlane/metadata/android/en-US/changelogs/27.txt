@@ -1,0 +1,1 @@
+Store listing and app display name are now Robin, with a new icon.

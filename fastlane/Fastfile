@@ -1,0 +1,603 @@
+# frozen_string_literal: true
+
+require "shellwords"
+require "fileutils"
+
+# Give xcodebuild -showBuildSettings more time (cold/busy machines).
+ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] ||= "30"
+ENV["FASTLANE_XCODEBUILD_SETTINGS_RETRIES"] ||= "5"
+
+default_platform(:ios)
+
+PROJECT_ROOT = File.expand_path("..", __dir__)
+IOS_DIR = File.join(PROJECT_ROOT, "ios")
+XCODEPROJ = File.join(IOS_DIR, "Robin.xcodeproj")
+SCHEME = "Robin"
+APP_IDENTIFIER = "org.evergreenlabs.robin"
+IOS_TEAM_ID = "X5J5T5UT6J"
+IOS_TARGET = "Robin"
+PROJECT_YML = File.join(IOS_DIR, "project.yml")
+IOS_DERIVED_DATA = File.expand_path("~/Library/Developer/Xcode/DerivedData")
+CI_PROFILE_NAME = "Robin CI AppStore"
+
+ANDROID_PROJECT_DIR = File.join(PROJECT_ROOT, "android")
+ANDROID_PACKAGE_NAME = "org.evergreenlabs.robin"
+ANDROID_METADATA_PATH = File.join(PROJECT_ROOT, "fastlane/metadata/android")
+
+def asc_credentials
+  key_id = ENV["APP_STORE_CONNECT_KEY_ID"].to_s.strip
+  issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"].to_s.strip
+  key_filepath = ENV["APP_STORE_CONNECT_KEY_PATH"].to_s.strip
+  if key_id.empty? || issuer_id.empty? || key_filepath.empty?
+    UI.user_error!(
+      "Set APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, and " \
+      "APP_STORE_CONNECT_KEY_PATH (see fastlane/.env.example). Do not commit them."
+    )
+  end
+  key_filepath = File.expand_path(key_filepath)
+  unless File.exist?(key_filepath)
+    UI.user_error!("APP_STORE_CONNECT_KEY_PATH does not exist: #{key_filepath}")
+  end
+  [key_id, issuer_id, key_filepath]
+end
+
+def configure_app_store_connect_api_key!
+  key_id, issuer_id, key_filepath = asc_credentials
+
+  if ENV["APP_STORE_CONNECT_KEY_CONTENT"].to_s.length > 0
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_content: ENV["APP_STORE_CONNECT_KEY_CONTENT"],
+      is_key_content_base64: ENV["APP_STORE_CONNECT_KEY_IS_BASE64"] == "true"
+    )
+  else
+    app_store_connect_api_key(
+      key_id: key_id,
+      issuer_id: issuer_id,
+      key_filepath: key_filepath
+    )
+  end
+end
+
+def ensure_asc_api_key!
+  $ios_api_key ||= configure_app_store_connect_api_key!
+end
+
+def version_already_bumped?
+  ENV["VERSION_ALREADY_BUMPED"].to_s == "1"
+end
+
+def ensure_xcodegen!
+  UI.user_error!("xcodegen not found — brew install xcodegen") if `which xcodegen`.strip.empty?
+  Dir.chdir(IOS_DIR) do
+    sh("xcodegen generate")
+  end
+end
+
+def read_project_yml_versions
+  yml = File.read(PROJECT_YML)
+  marketing = yml[/MARKETING_VERSION:\s*"([^"]+)"/, 1]
+  build = yml[/CURRENT_PROJECT_VERSION:\s*"([^"]+)"/, 1]
+  UI.user_error!("Could not parse versions from ios/project.yml") if marketing.nil? || build.nil?
+  [marketing, build]
+end
+
+def write_project_yml_versions!(marketing: nil, build: nil)
+  yml = File.read(PROJECT_YML)
+  if marketing
+    updated = yml.sub(/MARKETING_VERSION:\s*"[^"]+"/, "MARKETING_VERSION: \"#{marketing}\"")
+    UI.user_error!("Failed to update MARKETING_VERSION in project.yml") if updated == yml
+    yml = updated
+  end
+  if build
+    updated = yml.sub(/CURRENT_PROJECT_VERSION:\s*"[^"]+"/, "CURRENT_PROJECT_VERSION: \"#{build}\"")
+    UI.user_error!("Failed to update CURRENT_PROJECT_VERSION in project.yml") if updated == yml
+    yml = updated
+  end
+  File.write(PROJECT_YML, yml)
+end
+
+def bump_ios_build!
+  marketing, build = read_project_yml_versions
+  next_build = build.to_i + 1
+  write_project_yml_versions!(build: next_build)
+  UI.success("Bumped iOS build #{build} → #{next_build} (marketing #{marketing})")
+  ensure_xcodegen!
+  next_build
+end
+
+def bump_ios_marketing!(bump_type)
+  marketing, build = read_project_yml_versions
+  major, minor, patch = marketing.split(".").map(&:to_i)
+  case bump_type.to_s.downcase
+  when "major" then major += 1; minor = 0; patch = 0
+  when "minor" then minor += 1; patch = 0
+  else patch += 1
+  end
+  new_version = "#{major}.#{minor}.#{patch}"
+  next_build = build.to_i + 1
+  write_project_yml_versions!(marketing: new_version, build: next_build)
+  UI.success("Bumped iOS #{marketing} (#{build}) → #{new_version} (#{next_build})")
+  ensure_xcodegen!
+  new_version
+end
+
+def ios_pbxproj_path
+  File.join(XCODEPROJ, "project.pbxproj")
+end
+
+def build_ios_app!
+  ensure_xcodegen!
+
+  # Local: automatic signing. CI (API key content set): pin App Store profile via sigh.
+  unless ENV["APP_STORE_CONNECT_KEY_CONTENT"].to_s.length > 0
+    build_app(
+      project: XCODEPROJ,
+      scheme: SCHEME,
+      export_method: "app-store",
+      derived_data_path: IOS_DERIVED_DATA,
+      xcargs: "-allowProvisioningUpdates",
+      output_directory: PROJECT_ROOT,
+      output_name: "Robin"
+    )
+    return
+  end
+
+  get_provisioning_profile(
+    api_key: $ios_api_key,
+    app_identifier: APP_IDENTIFIER,
+    provisioning_name: CI_PROFILE_NAME,
+    force: true
+  )
+
+  saved_pbxproj = File.read(ios_pbxproj_path)
+  begin
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: XCODEPROJ,
+      targets: [IOS_TARGET],
+      team_id: IOS_TEAM_ID,
+      code_sign_identity: "Apple Distribution",
+      profile_name: CI_PROFILE_NAME,
+      build_configurations: ["Release"]
+    )
+    build_app(
+      project: XCODEPROJ,
+      scheme: SCHEME,
+      export_method: "app-store",
+      derived_data_path: IOS_DERIVED_DATA,
+      output_directory: PROJECT_ROOT,
+      output_name: "Robin",
+      export_options: {
+        signingStyle: "manual",
+        teamID: IOS_TEAM_ID,
+        provisioningProfiles: { APP_IDENTIFIER => CI_PROFILE_NAME }
+      }
+    )
+  ensure
+    File.write(ios_pbxproj_path, saved_pbxproj)
+  end
+end
+
+def upload_dsyms_to_sentry!
+  # Optional for forks: skip unless auth + org + project are all set.
+  return unless system("which sentry-cli > /dev/null 2>&1")
+  return if ENV["SENTRY_AUTH_TOKEN"].to_s.empty?
+
+  org = ENV["SENTRY_ORG"].to_s.strip
+  project = ENV["SENTRY_PROJECT"].to_s.strip
+  if org.empty? || project.empty?
+    UI.important("SENTRY_ORG / SENTRY_PROJECT unset; skipping dSYM upload (optional)")
+    return
+  end
+
+  dsym = lane_context[SharedValues::DSYM_OUTPUT_PATH]
+  dsym ||= Dir[File.join(PROJECT_ROOT, "*.dSYM.zip")].max_by { |p| File.mtime(p) }
+  unless dsym && File.exist?(dsym)
+    UI.important("No dSYM found; skipping Sentry upload")
+    return
+  end
+
+  begin
+    sh(
+      "sentry-cli debug-files upload --include-sources " \
+      "--org #{org.shellescape} --project #{project.shellescape} " \
+      "#{dsym.shellescape}"
+    )
+  rescue StandardError => e
+    UI.important("Sentry dSYM upload failed (non-blocking): #{e.message}")
+  end
+end
+
+def load_robin_android_env!
+  env_file = File.expand_path("~/.sidekick-secrets/robin-android-env.sh")
+  if File.exist?(env_file)
+    File.readlines(env_file).each do |line|
+      next unless line =~ /^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$/
+
+      key = Regexp.last_match(1)
+      val = Regexp.last_match(2).strip
+      val = val.sub(/\A(['"])(.*)\1\z/, '\2')
+      ENV[key] = val if ENV[key].to_s.empty?
+    end
+  end
+
+  ENV["GOOGLE_PLAY_JSON_KEY"] ||= ENV["GOOGLE_APPLICATION_CREDENTIALS"] if ENV["GOOGLE_APPLICATION_CREDENTIALS"].to_s.length > 0
+  ENV["GOOGLE_PLAY_JSON_KEY"] ||= ENV["ANDROID_PLAY_STORE_JSON_KEY_PATH"] if ENV["ANDROID_PLAY_STORE_JSON_KEY_PATH"].to_s.length > 0
+end
+
+def android_version_name
+  gradle_file = File.join(ANDROID_PROJECT_DIR, "app/build.gradle.kts")
+  match = File.read(gradle_file)[/versionName\s*=\s*"([\d.]+)"/, 1]
+  raise "Could not find versionName in #{gradle_file}" unless match
+
+  match
+end
+
+def android_version_code
+  gradle_file = File.join(ANDROID_PROJECT_DIR, "app/build.gradle.kts")
+  match = File.read(gradle_file)[/versionCode\s*=\s*(\d+)/, 1]
+  raise "Could not find versionCode in #{gradle_file}" unless match
+
+  match.to_i
+end
+
+def bump_android_version_code!
+  gradle_file = File.join(ANDROID_PROJECT_DIR, "app/build.gradle.kts")
+  content = File.read(gradle_file)
+  current_code = content[/versionCode\s*=\s*(\d+)/, 1].to_i
+  content = content.sub(/versionCode\s*=\s*#{current_code}/, "versionCode = #{current_code + 1}")
+  File.write(gradle_file, content)
+  UI.success("Bumped Android versionCode: #{current_code} → #{current_code + 1}")
+  current_code + 1
+end
+
+def bump_android_version!(bump_type)
+  gradle_file = File.join(ANDROID_PROJECT_DIR, "app/build.gradle.kts")
+  content = File.read(gradle_file)
+  current = content[/versionName\s*=\s*"([\d.]+)"/, 1]
+  raise "Could not find versionName in #{gradle_file}" unless current
+
+  major, minor, patch = current.split(".").map(&:to_i)
+  case bump_type.to_s.downcase
+  when "major" then major += 1; minor = 0; patch = 0
+  when "minor" then minor += 1; patch = 0
+  else patch += 1
+  end
+  new_version = "#{major}.#{minor}.#{patch}"
+  content = content.sub(/versionName\s*=\s*"#{Regexp.escape(current)}"/, "versionName = \"#{new_version}\"")
+  current_code = content[/versionCode\s*=\s*(\d+)/, 1].to_i
+  content = content.sub(/versionCode\s*=\s*#{current_code}/, "versionCode = #{current_code + 1}")
+  File.write(gradle_file, content)
+  UI.success("Bumped Android version: #{current} → #{new_version}, versionCode #{current_code} → #{current_code + 1}")
+  new_version
+end
+
+def copy_android_aab_to_dist!
+  aab = lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH]
+  UI.user_error!("No AAB produced") unless aab && File.exist?(aab)
+
+  dist = File.join(ANDROID_PROJECT_DIR, "dist")
+  FileUtils.mkdir_p(dist)
+  dest = File.join(dist, "robin-#{android_version_name}-#{android_version_code}.aab")
+  FileUtils.cp(aab, dest)
+  UI.success("Copied AAB → #{dest}")
+  dest
+end
+
+def assert_no_android_in_ios_release_notes!
+  paths = [
+    File.join(__dir__, "RELEASE_NOTES.txt"),
+    File.join(__dir__, "Deliverfile"),
+    *__dir__.then { |d| Dir[File.join(d, "metadata", "**", "*")] }
+  ].select { |p| File.file?(p) }
+  paths.reject! { |p| p.include?("/metadata/android/") }
+
+  hits = []
+  paths.each do |path|
+    text = File.read(path)
+    next unless text.match?(/android|google play|play store/i)
+
+    hits << path.sub("#{PROJECT_ROOT}/", "")
+  end
+  return if hits.empty?
+
+  UI.user_error!(
+    "iOS App Store text must not mention Android / Google Play / Play Store. " \
+    "Fix: #{hits.join(', ')}"
+  )
+end
+
+def ensure_ios_export_compliance!
+  # Prefer Info.plist ITSAppUsesNonExemptEncryption (see ios/project.yml). This is a
+  # backup for builds already in ASC that still show the missing-compliance warning.
+  UI.message("Ensuring App Store Connect export compliance (usesNonExemptEncryption=false)…")
+  app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+  UI.user_error!("App Store Connect app not found for #{APP_IDENTIFIER}") unless app
+
+  builds = Spaceship::ConnectAPI::Build.all(
+    app_id: app.id,
+    includes: Spaceship::ConnectAPI::Build::ESSENTIAL_INCLUDES,
+    sort: "-uploadedDate",
+    limit: 10
+  )
+  builds.each do |build|
+    missing = begin
+      build.missing_export_compliance?
+    rescue StandardError
+      false
+    end
+    next unless missing || build.uses_non_exempt_encryption.nil?
+
+    UI.important("Clearing export compliance on build #{build.version} (#{build.id})")
+    build.update(attributes: { uses_non_exempt_encryption: false })
+  end
+end
+
+platform :ios do
+  before_all do
+    # Upload lanes call ensure_asc_api_key!. Local generate/build stay usable without it.
+    if ENV["APP_STORE_CONNECT_KEY_ID"].to_s.strip.length > 0
+      $ios_api_key = configure_app_store_connect_api_key!
+    end
+  end
+
+  desc "Regenerate Xcode project from ios/project.yml"
+  lane :generate do
+    ensure_xcodegen!
+  end
+
+  desc "Build an App Store IPA locally (no upload, no bump)"
+  lane :build do
+    build_ios_app!
+  end
+
+  desc "Bump iOS build, archive, upload to TestFlight"
+  lane :beta do |options|
+    ensure_asc_api_key!
+    whats_new = options[:whats_new] || options[:whatsNew] || options[:changelog]
+    bump_ios_build! unless version_already_bumped?
+    build_ios_app!
+    args = { skip_waiting_for_build_processing: true }
+    args[:changelog] = whats_new if whats_new && !whats_new.to_s.empty?
+    upload_to_testflight(args)
+    ensure_ios_export_compliance!
+    upload_dsyms_to_sentry!
+    clean_build_artifacts
+  end
+
+  desc "Pull App Store listing copy from ASC into fastlane/metadata"
+  lane :download_metadata do
+    # Overwrites local text files with what's currently on App Store Connect.
+    # Spawn deliver with an API-key JSON so auth matches this lane's key setup.
+    require "json"
+    require "tmpdir"
+
+    ensure_asc_api_key!
+    key_id, issuer_id, key_filepath = asc_credentials
+    metadata_path = File.join(PROJECT_ROOT, "fastlane/metadata")
+    json_path = File.join(Dir.tmpdir, "asc_api_key_#{Process.pid}.json")
+    File.write(
+      json_path,
+      JSON.generate(
+        "key_id" => key_id,
+        "issuer_id" => issuer_id,
+        "key" => File.read(key_filepath)
+      )
+    )
+    begin
+      sh(
+        "cd #{Shellwords.escape(PROJECT_ROOT)} && " \
+        "fastlane deliver download_metadata " \
+        "--app_identifier #{Shellwords.escape(APP_IDENTIFIER)} " \
+        "--metadata_path #{Shellwords.escape(metadata_path)} " \
+        "--api_key_path #{Shellwords.escape(json_path)} " \
+        "--force true"
+      )
+    ensure
+      FileUtils.rm_f(json_path)
+    end
+  end
+
+  desc "Upload App Store listing metadata only (no binary)"
+  lane :upload_metadata do |options|
+    ensure_asc_api_key!
+    assert_no_android_in_ios_release_notes!
+    marketing, = read_project_yml_versions
+    upload_screenshots = options[:screenshots] != false && ENV["SKIP_SCREENSHOTS"] != "true"
+
+    # Text first — ASC "No data" on review attachments is non-fatal.
+    begin
+      upload_to_app_store(
+        skip_binary_upload: true,
+        skip_screenshots: true,
+        force: true,
+        submit_for_review: false,
+        run_precheck_before_submit: false,
+        precheck_include_in_app_purchases: false,
+        skip_app_version_update: true,
+        app_version: marketing
+      )
+    rescue => e
+      raise unless e.message.to_s.include?("No data")
+      UI.important("deliver hit ASC 'No data' on review attachments — treating metadata upload as non-fatal.")
+    end
+
+    next unless upload_screenshots
+
+    begin
+      upload_to_app_store(
+        skip_binary_upload: true,
+        skip_metadata: true,
+        skip_screenshots: false,
+        overwrite_screenshots: true,
+        force: true,
+        submit_for_review: false,
+        run_precheck_before_submit: false,
+        precheck_include_in_app_purchases: false,
+        skip_app_version_update: true,
+        app_version: marketing
+      )
+    rescue => e
+      raise unless e.message.to_s.include?("No data")
+      UI.important("deliver hit ASC 'No data' after screenshots — treating as non-fatal if screenshots uploaded above.")
+    end
+  end
+
+  desc "Bump iOS marketing+build, archive, submit to App Store"
+  lane :release do |options|
+    ensure_asc_api_key!
+    whats_new = options[:whats_new] || options[:whatsNew] || "Bug fixes and performance improvements"
+    bump_type = options[:bump_type] || options[:bumpType] || "patch"
+
+    assert_no_android_in_ios_release_notes!
+
+    unless version_already_bumped?
+      bump_ios_marketing!(bump_type)
+    end
+
+    build_ios_app!
+    marketing, = read_project_yml_versions
+    begin
+      set_changelog(
+        app_identifier: APP_IDENTIFIER,
+        version: marketing,
+        changelog: whats_new
+      )
+    rescue => e
+      UI.important(
+        "set_changelog failed (continuing; deliver will use metadata/release_notes): #{e.message}"
+      )
+    end
+    upload_to_app_store(
+      run_precheck_before_submit: false,
+      force: true,
+      reject_if_possible: true,
+      automatic_release: true,
+      submit_for_review: true,
+      skip_metadata: ENV["SKIP_METADATA"] == "true",
+      skip_screenshots: true,
+      precheck_include_in_app_purchases: false
+    )
+    ensure_ios_export_compliance!
+    upload_dsyms_to_sentry!
+    clean_build_artifacts
+  end
+end
+
+platform :android do
+  before_all do
+    load_robin_android_env!
+  end
+
+  desc "Upload Play Store listing metadata + screenshots only (no AAB)"
+  lane :upload_metadata do
+    # Listing text/images are app-level; changelogs attach to the open-testing release.
+    upload_to_play_store(
+      package_name: ANDROID_PACKAGE_NAME,
+      metadata_path: ANDROID_METADATA_PATH,
+      track: "beta",
+      version_code: android_version_code.to_s,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: false,
+      skip_upload_changelogs: false,
+      skip_upload_images: false,
+      skip_upload_screenshots: false,
+      changes_not_sent_for_review: true
+    )
+  end
+
+  desc "Build a release AAB locally (no upload)"
+  lane :build_aab do
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: ANDROID_PROJECT_DIR
+    )
+    copy_android_aab_to_dist!
+  end
+
+  desc "Bump versionCode, build AAB, upload to Play open testing (beta)"
+  lane :beta do |options|
+    track = (options[:track] || "beta").to_s
+    release_status = (options[:release_status] || "completed").to_s
+
+    bump_android_version_code! unless version_already_bumped?
+
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: ANDROID_PROJECT_DIR
+    )
+    copy_android_aab_to_dist!
+
+    upload_to_play_store(
+      track: track,
+      release_status: release_status,
+      aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+      package_name: ANDROID_PACKAGE_NAME,
+      metadata_path: ANDROID_METADATA_PATH,
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+
+  desc "Bump version, upload to Play internal, promote to production"
+  lane :release do |options|
+    whats_new = options[:whats_new] || options[:whatsNew] || "Bug fixes and performance improvements"
+    bump_type = options[:bump_type] || options[:bumpType] || "patch"
+
+    unless version_already_bumped?
+      bump_android_version!(bump_type) if bump_type && !bump_type.to_s.empty?
+    end
+
+    metadata_dir = File.join(ANDROID_METADATA_PATH, "en-US/changelogs")
+    FileUtils.mkdir_p(metadata_dir)
+    version_code = android_version_code
+    File.write(File.join(metadata_dir, "#{version_code}.txt"), whats_new)
+
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: ANDROID_PROJECT_DIR
+    )
+    copy_android_aab_to_dist!
+
+    # Internal first so testers get the same build that promotes to production.
+    upload_to_play_store(
+      track: "internal",
+      release_status: "completed",
+      aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+      package_name: ANDROID_PACKAGE_NAME,
+      metadata_path: ANDROID_METADATA_PATH,
+      skip_upload_apk: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "production",
+      version_code: version_code,
+      package_name: ANDROID_PACKAGE_NAME,
+      metadata_path: ANDROID_METADATA_PATH,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end
+
+desc "Play open testing then TestFlight (Android first)"
+lane :beta_both do |options|
+  UI.header("Android → Play beta")
+  Fastlane::LaneManager.cruise_lane("android", "beta", options)
+  UI.header("iOS → TestFlight")
+  Fastlane::LaneManager.cruise_lane("ios", "beta", options)
+end

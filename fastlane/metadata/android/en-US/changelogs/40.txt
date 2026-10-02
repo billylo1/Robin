@@ -1,0 +1,1 @@
+Settings groups text size, auto-refresh, home feed, and filters. Choose Following (by time) or For You for your home timeline. Show or hide the compose button and live content from Settings.

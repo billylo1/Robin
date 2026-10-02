@@ -1,0 +1,2 @@
+Welcome screen explains this is an open-source project from Canadian non-profit Evergreen Labs.
+README and Evergreen Labs links open from the sign-in screen.

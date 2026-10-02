@@ -1,0 +1,1 @@
+Choose Following or For You for your home timeline in Settings (defaults to Following). Hide live content and Spaces promos from the feed in Settings. Auto-refresh defaults to every 5 minutes.

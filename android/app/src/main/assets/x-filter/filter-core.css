@@ -1,0 +1,133 @@
+/*--
+  Adapted from Minimal Theme for Twitter / X (MIT)
+  https://github.com/typefully/minimal-twitter
+  Copyright (c) 2022 Mailbrew Inc.
+--*/
+
+/* Promoted / Ad placements (keep article combinator — videos use placementTracking too) */
+[data-testid="placementTracking"] article,
+a[href*="quick_promote_web"] {
+  display: none !important;
+}
+
+/* Inline "Who to follow" / topics carousels on home */
+[data-testid="primaryColumn"] section[aria-labelledby^="accessible-list-"] > div[aria-label$="Carousel"],
+[data-testid="primaryColumn"] a[href*="/i/flow/topics_selector"],
+[data-testid="primaryColumn"] a[href*="/i/topics/picker/home"] {
+  display: none !important;
+}
+
+/*
+ * Home + hide page header: strip X chrome so the feed fills the WebView.
+ * Mac Designed-for-iPad often gets desktop DOM; left rail alone can leave a
+ * blank primary column at phone widths — hide rail and force the column visible.
+ *
+ * While preferLatest still needs the Popular/Latest control, JS sets
+ * data-mt-defer-feed-chrome so TopNavBar / banner stay visible.
+ *
+ * On landscape / tablet, let the timeline use the real viewport width (up to
+ * a readable cap) instead of X's phone-narrow column.
+ */
+html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) [data-testid="TopNavBar"],
+html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) header[role="banner"],
+html.mt-hide-page-header[data-mt-home="1"] nav[aria-label="Primary"],
+html.mt-hide-page-header[data-mt-home="1"] [data-testid="sidebarColumn"],
+html.mt-hide-page-header[data-mt-home="1"] [aria-label="Account menu"] {
+  display: none !important;
+}
+
+html.mt-hide-page-header[data-mt-home="1"] main[role="main"] {
+  display: flex !important;
+  visibility: visible !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  justify-content: center !important;
+}
+
+/* Desktop column row: after hiding left/right rails, center the feed. */
+html.mt-hide-page-header[data-mt-home="1"] main[role="main"] > div {
+  display: flex !important;
+  visibility: visible !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  min-height: 100vh !important;
+}
+
+html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] {
+  display: flex !important;
+  flex-direction: column !important;
+  visibility: visible !important;
+  flex: 1 1 auto !important;
+  max-width: min(100%, 840px) !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 50vh !important;
+  margin: 0 auto !important;
+  border: none !important;
+  position: relative !important;
+  left: auto !important;
+  right: auto !important;
+  transform: none !important;
+}
+
+html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] > div {
+  max-width: none !important;
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+/* X nests another max-width rail inside primaryColumn — stretch it too. */
+html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] > div > div {
+  max-width: none !important;
+  width: 100% !important;
+}
+
+/* Trends “What’s happening” module if it escapes sidebarColumn hide */
+html.mt-hide-page-header[data-mt-home="1"]
+  [aria-label="Timeline: Trending now"],
+html.mt-hide-page-header[data-mt-home="1"]
+  section[aria-labelledby][role="region"]:has(a[href*="/i/trending"]),
+html.mt-hide-page-header[data-mt-home="1"]
+  div[aria-label="What’s happening"],
+html.mt-hide-page-header[data-mt-home="1"]
+  div[aria-label="What's happening"] {
+  display: none !important;
+}
+
+/* Live / broadcast / Spaces / event chips on home (toggle: hideLiveContent; rows also via JS) */
+html.mt-hide-live[data-mt-home="1"] [data-testid="SpaceCard"],
+html.mt-hide-live[data-mt-home="1"] [data-testid="spaceLive"],
+html.mt-hide-live[data-mt-home="1"] [data-testid="space"],
+html.mt-hide-live[data-mt-home="1"] [data-testid="liveBadge"],
+html.mt-hide-live[data-mt-home="1"] [data-testid="LiveBadge"],
+html.mt-hide-live[data-mt-home="1"] a[href*="/i/broadcast/"],
+html.mt-hide-live[data-mt-home="1"] a[href*="/i/spaces/"],
+html.mt-hide-live[data-mt-home="1"] a[href*="/i/events/"] {
+  display: none !important;
+}
+
+/* Floating / side-nav compose button (toggle: hideComposeButton) */
+html.mt-hide-compose a[data-testid="SideNav_NewTweet_Button"],
+html.mt-hide-compose a[href="/compose/post"],
+html.mt-hide-compose a[href="/compose/tweet"],
+html.mt-hide-compose a[href="/compose/post/"] {
+  display: none !important;
+}
+
+/*
+ * Boot gate: hide X until filter settles Following / Latest / chrome hides.
+ * Native hosts show their own cover while this is active.
+ */
+html:not([data-mt-boot-ready="1"]) body {
+  visibility: hidden !important;
+}
+html[data-mt-boot-ready="1"] body {
+  visibility: visible !important;
+}

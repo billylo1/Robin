@@ -1,0 +1,3 @@
+Following feed opens X in a WebView with Following forced and promoted posts hidden.
+Page header chrome is hidden under the native Following bar.
+Settings (gear): text size, feed filters, and sign out of X.

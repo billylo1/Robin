@@ -1,0 +1,1 @@
+When X offers Show new posts, Robin loads them even if that control sits under hidden page chrome. Returning to the app at the top of Following loads newer posts without a manual refresh.

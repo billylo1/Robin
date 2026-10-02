@@ -1,0 +1,4 @@
+Google and Apple sign-in stay in the app (no Chrome bounce).
+Text size defaults to 100% and can go up to 200%.
+Following feed with promoted posts filtered and page header hidden.
+Settings for text size, feed filters, and sign out.

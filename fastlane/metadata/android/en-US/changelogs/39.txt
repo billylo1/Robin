@@ -1,0 +1,1 @@
+Changing Following, For You, or feed filters reloads the home timeline when you return. Feed uses more width in landscape and on tablets.

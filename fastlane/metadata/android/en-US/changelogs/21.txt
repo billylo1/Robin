@@ -1,0 +1,1 @@
+Prefer Latest now detects Popular vs Recent correctly and keeps Following in reverse-time order. Reposts show when they were reposted.

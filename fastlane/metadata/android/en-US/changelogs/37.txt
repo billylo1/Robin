@@ -1,0 +1,1 @@
+Feed auto-refreshes when you’re near the top and idle; set how often in Settings (Off, 30s, 1–5 min). Warm refresh keeps the current posts visible until new ones are ready. Header action icons use system text color instead of brand red.

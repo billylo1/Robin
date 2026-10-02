@@ -1,0 +1,483 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		195CDB735C4954CF5E4F2167 /* XFilterInjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 047A0AC61B15F8E408F14CCC /* XFilterInjector.swift */; };
+		1A25D1397E571963E986BD1D /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA9ACBC7058B4C8B4B67C69B /* AppDelegate.swift */; };
+		21AF53957E8BD976EBDCAA0A /* FilterSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCD4F2454BE18BBFB45E3C97 /* FilterSettingsStore.swift */; };
+		2B28B9B12BA507FA5A261AFC /* FeedRefreshInterval.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E624277FD2AEE546148ABD /* FeedRefreshInterval.swift */; };
+		2D0D65378B377D50C32340F6 /* x-filter in Resources */ = {isa = PBXBuildFile; fileRef = E75FB2F5E8DDB326576ED11A /* x-filter */; };
+		356D328289FE5C68CDE749FC /* XWebFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4A4F8D71519826FEF4FF3E /* XWebFeedView.swift */; };
+		3D3E3C51C2C69DAC54B0C864 /* FilterSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8CA8F1B419AE854F52735B9 /* FilterSettings.swift */; };
+		3DEC86FC9CA6D15037832DD8 /* Aptabase in Frameworks */ = {isa = PBXBuildFile; productRef = FC3BD1272CFA4CAE2B8484CA /* Aptabase */; };
+		4EF3D8A6203B361B3B274174 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 085F0DD1E0B83BDAD26B9ED5 /* RootView.swift */; };
+		5AEA871B0B5391D42FB53441 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 16669C47865736CA9B5F3216 /* Assets.xcassets */; };
+		68D2DBA83EDAF729DE20F8B7 /* FontScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0046520D77B03375F4B14BAA /* FontScale.swift */; };
+		80CFCEA9A7F63F6F6F77B302 /* AppChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2338E8D46A6EFC450540C436 /* AppChrome.swift */; };
+		A3EFB175BBB679FFF946C8A1 /* InfoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91B70D49F5E425FA5282F0B7 /* InfoSheet.swift */; };
+		B9B8F2DE2CA299119539D226 /* Sentry-Dynamic in Frameworks */ = {isa = PBXBuildFile; productRef = E0201A0728C2087F15DA5118 /* Sentry-Dynamic */; };
+		BAE9920EF9D0F8FC6529FB9D /* Analytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBB4B9E884DC52C547982C2 /* Analytics.swift */; };
+		C61D1B3E3F3456657AD20E4A /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066FC26078AA74EBC642265F /* AppConfig.swift */; };
+		DBA8BC5FE8ACD108076940CE /* RobinApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 457041A2E8F752AEA6236C4D /* RobinApp.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0046520D77B03375F4B14BAA /* FontScale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontScale.swift; sourceTree = "<group>"; };
+		047A0AC61B15F8E408F14CCC /* XFilterInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XFilterInjector.swift; sourceTree = "<group>"; };
+		066FC26078AA74EBC642265F /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		085F0DD1E0B83BDAD26B9ED5 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		16669C47865736CA9B5F3216 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2338E8D46A6EFC450540C436 /* AppChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppChrome.swift; sourceTree = "<group>"; };
+		29E624277FD2AEE546148ABD /* FeedRefreshInterval.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedRefreshInterval.swift; sourceTree = "<group>"; };
+		457041A2E8F752AEA6236C4D /* RobinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RobinApp.swift; sourceTree = "<group>"; };
+		5A4A4F8D71519826FEF4FF3E /* XWebFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XWebFeedView.swift; sourceTree = "<group>"; };
+		5BE7893946000DB805920BB6 /* RobinRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RobinRelease.entitlements; sourceTree = "<group>"; };
+		91B70D49F5E425FA5282F0B7 /* InfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoSheet.swift; sourceTree = "<group>"; };
+		B8CA8F1B419AE854F52735B9 /* FilterSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSettings.swift; sourceTree = "<group>"; };
+		BA9ACBC7058B4C8B4B67C69B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		C5EC5E40723A5184B83DE4CD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CBBB4B9E884DC52C547982C2 /* Analytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Analytics.swift; sourceTree = "<group>"; };
+		CCD4F2454BE18BBFB45E3C97 /* FilterSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSettingsStore.swift; sourceTree = "<group>"; };
+		E75FB2F5E8DDB326576ED11A /* x-filter */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "x-filter"; path = "Robin/Resources/x-filter"; sourceTree = SOURCE_ROOT; };
+		F3E22E8D646E250837757F79 /* Robin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Robin.entitlements; sourceTree = "<group>"; };
+		FB76E59A7154998AEA2DEA8E /* Robin.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		"TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		79A21EE9C7AC6809876F67BF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B9B8F2DE2CA299119539D226 /* Sentry-Dynamic in Frameworks */,
+				3DEC86FC9CA6D15037832DD8 /* Aptabase in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		403D31789B93D763E2E649C4 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				2338E8D46A6EFC450540C436 /* AppChrome.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		78FA855CB71FB34279CC5310 /* XFilter */ = {
+			isa = PBXGroup;
+			children = (
+				B8CA8F1B419AE854F52735B9 /* FilterSettings.swift */,
+				CCD4F2454BE18BBFB45E3C97 /* FilterSettingsStore.swift */,
+				047A0AC61B15F8E408F14CCC /* XFilterInjector.swift */,
+			);
+			path = XFilter;
+			sourceTree = "<group>";
+		};
+		8DA11A03717261E542F8917B /* Robin */ = {
+			isa = PBXGroup;
+			children = (
+				E92CBFB36D79C02C1E918546 /* Helpers */,
+				EDB4BC9B5333D703066A2540 /* Resources */,
+				403D31789B93D763E2E649C4 /* Services */,
+				DDD0B775BF428BED91C47B00 /* Views */,
+				78FA855CB71FB34279CC5310 /* XFilter */,
+				066FC26078AA74EBC642265F /* AppConfig.swift */,
+				BA9ACBC7058B4C8B4B67C69B /* AppDelegate.swift */,
+				16669C47865736CA9B5F3216 /* Assets.xcassets */,
+				C5EC5E40723A5184B83DE4CD /* Info.plist */,
+				F3E22E8D646E250837757F79 /* Robin.entitlements */,
+				457041A2E8F752AEA6236C4D /* RobinApp.swift */,
+				5BE7893946000DB805920BB6 /* RobinRelease.entitlements */,
+			);
+			path = Robin;
+			sourceTree = "<group>";
+		};
+		DDD0B775BF428BED91C47B00 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				91B70D49F5E425FA5282F0B7 /* InfoSheet.swift */,
+				085F0DD1E0B83BDAD26B9ED5 /* RootView.swift */,
+				5A4A4F8D71519826FEF4FF3E /* XWebFeedView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E164A9ECD7D2CA39117BE5DC = {
+			isa = PBXGroup;
+			children = (
+				8DA11A03717261E542F8917B /* Robin */,
+				E59FBBEEAC608726FA10551F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E59FBBEEAC608726FA10551F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FB76E59A7154998AEA2DEA8E /* Robin.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		E92CBFB36D79C02C1E918546 /* Helpers */ = {
+			isa = PBXGroup;
+			children = (
+				CBBB4B9E884DC52C547982C2 /* Analytics.swift */,
+				29E624277FD2AEE546148ABD /* FeedRefreshInterval.swift */,
+				0046520D77B03375F4B14BAA /* FontScale.swift */,
+			);
+			path = Helpers;
+			sourceTree = "<group>";
+		};
+		EDB4BC9B5333D703066A2540 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				E75FB2F5E8DDB326576ED11A /* x-filter */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		"TEMP_D71E9A23-D9CC-4DD4-A5E4-256DA6C2C523" /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				"TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */,
+			);
+			path = ios;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A023C6DC2491932DC3A5C221 /* Robin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8E9B58911D66A560C0BDB92B /* Build configuration list for PBXNativeTarget "Robin" */;
+			buildPhases = (
+				CD44A99EC7819957F56E3000 /* Sources */,
+				D5DF95A08A353A8AA2D0826F /* Resources */,
+				79A21EE9C7AC6809876F67BF /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Robin;
+			packageProductDependencies = (
+				E0201A0728C2087F15DA5118 /* Sentry-Dynamic */,
+				FC3BD1272CFA4CAE2B8484CA /* Aptabase */,
+			);
+			productName = Robin;
+			productReference = FB76E59A7154998AEA2DEA8E /* Robin.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A9D49DC2246EB8DA063159E0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					A023C6DC2491932DC3A5C221 = {
+						DevelopmentTeam = X5J5T5UT6J;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 636FE875653DB363969A3D5C /* Build configuration list for PBXProject "Robin" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E164A9ECD7D2CA39117BE5DC;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DE4DE067D880D4F5883BE5A0 /* XCRemoteSwiftPackageReference "aptabase-swift" */,
+				DC76913CA5147306B0C554DB /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E59FBBEEAC608726FA10551F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A023C6DC2491932DC3A5C221 /* Robin */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D5DF95A08A353A8AA2D0826F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5AEA871B0B5391D42FB53441 /* Assets.xcassets in Resources */,
+				2D0D65378B377D50C32340F6 /* x-filter in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CD44A99EC7819957F56E3000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BAE9920EF9D0F8FC6529FB9D /* Analytics.swift in Sources */,
+				80CFCEA9A7F63F6F6F77B302 /* AppChrome.swift in Sources */,
+				C61D1B3E3F3456657AD20E4A /* AppConfig.swift in Sources */,
+				1A25D1397E571963E986BD1D /* AppDelegate.swift in Sources */,
+				2B28B9B12BA507FA5A261AFC /* FeedRefreshInterval.swift in Sources */,
+				3D3E3C51C2C69DAC54B0C864 /* FilterSettings.swift in Sources */,
+				21AF53957E8BD976EBDCAA0A /* FilterSettingsStore.swift in Sources */,
+				68D2DBA83EDAF729DE20F8B7 /* FontScale.swift in Sources */,
+				A3EFB175BBB679FFF946C8A1 /* InfoSheet.swift in Sources */,
+				DBA8BC5FE8ACD108076940CE /* RobinApp.swift in Sources */,
+				4EF3D8A6203B361B3B274174 /* RootView.swift in Sources */,
+				195CDB735C4954CF5E4F2167 /* XFilterInjector.swift in Sources */,
+				356D328289FE5C68CDE749FC /* XWebFeedView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3630D22D18061DBD5D07ACA3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Robin/Robin.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 48;
+				DEVELOPMENT_TEAM = X5J5T5UT6J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Robin/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.2.15;
+				OTHER_LDFLAGS = "$(inherited) -ObjC";
+				PRODUCT_BUNDLE_IDENTIFIER = org.evergreenlabs.robin;
+				PRODUCT_NAME = Robin;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		731B0BAB0BC7B7B2C2F3969E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Robin/RobinRelease.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 48;
+				DEVELOPMENT_TEAM = X5J5T5UT6J;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Robin/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.2.15;
+				OTHER_LDFLAGS = "$(inherited) -ObjC";
+				PRODUCT_BUNDLE_IDENTIFIER = org.evergreenlabs.robin;
+				PRODUCT_NAME = Robin;
+				SDKROOT = iphoneos;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		C47C3DAB46D9040153520C7E /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		D80246C00E14E3392654CD99 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = "TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		636FE875653DB363969A3D5C /* Build configuration list for PBXProject "Robin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D80246C00E14E3392654CD99 /* Debug */,
+				C47C3DAB46D9040153520C7E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		8E9B58911D66A560C0BDB92B /* Build configuration list for PBXNativeTarget "Robin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3630D22D18061DBD5D07ACA3 /* Debug */,
+				731B0BAB0BC7B7B2C2F3969E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DC76913CA5147306B0C554DB /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.28.0;
+			};
+		};
+		DE4DE067D880D4F5883BE5A0 /* XCRemoteSwiftPackageReference "aptabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aptabase/aptabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.3.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E0201A0728C2087F15DA5118 /* Sentry-Dynamic */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DC76913CA5147306B0C554DB /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = "Sentry-Dynamic";
+		};
+		FC3BD1272CFA4CAE2B8484CA /* Aptabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DE4DE067D880D4F5883BE5A0 /* XCRemoteSwiftPackageReference "aptabase-swift" */;
+			productName = Aptabase;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A9D49DC2246EB8DA063159E0 /* Project object */;
+}

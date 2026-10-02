@@ -1,0 +1,1 @@
+Native feed header hides immediately when you scroll, with no fade.

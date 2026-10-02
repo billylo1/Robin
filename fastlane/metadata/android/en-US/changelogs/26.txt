@@ -1,0 +1,1 @@
+Native feed header stays visible while you scroll.

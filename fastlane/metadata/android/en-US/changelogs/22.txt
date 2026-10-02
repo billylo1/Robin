@@ -1,0 +1,1 @@
+Feed header hides while you scroll and comes back when you scroll up. A back-to-top arrow appears near the top after you scroll down.

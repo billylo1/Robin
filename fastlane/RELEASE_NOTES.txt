@@ -1,0 +1,44 @@
+Open the Robin source repository from Settings.
+Settings groups text size, auto-refresh, home feed, and filters.
+Choose Following (by time) or For You for your home timeline.
+Show or hide the compose button and live content from Settings.
+Fixed a blank home timeline when the app runs on a Mac.
+Changing Following, For You, or feed filters reloads the home timeline when you return.
+Feed uses more width in landscape and on tablets (up to about 840px).
+Choose Following or For You for your home timeline in Settings (defaults to Following).
+Hide live content and Spaces promos from the feed in Settings.
+Auto-refresh defaults to every 5 minutes.
+Feed auto-refreshes when you’re near the top and idle; set how often in Settings (Off, 30s, 1–5 min).
+Warm refresh keeps the current posts visible until new ones are ready.
+Header action icons use system text color instead of brand red.
+Dark mode header uses a lighter red so title and icons stay readable.
+Dark mode uses a dark feed header so status bar icons stay readable.
+
+Sign out clears your X session cleanly and returns you to login.
+App icon corners no longer show a black fringe.
+
+When X offers “Show new posts,” Robin loads them even if that control sits under hidden page chrome.
+Returning to the app at the top of Following loads newer posts without a manual refresh. Tap Robin in the header while near the top to refresh too.
+Returning from a post restores the Following feed instead of a blank page.
+Article and web links open in an in-app Safari sheet.
+Robin rebrand — new name and icon. Quieter chronological Following feed.
+Header spacing fixed on Mac.
+Store listing and app display name are now Robin, with a new icon.
+Native feed header stays visible while you scroll.
+Native feed header hides immediately when you scroll, with no fade.
+Native feed header stays hidden while you scroll and only returns when you are back at the top.
+Opening the feed is smoother — a brief preparing screen covers the session until filters finish settling.
+Feed header hides while you scroll and comes back when you scroll up. A back-to-top arrow appears near the top after you scroll down.
+Prefer Latest now detects Popular vs Recent correctly and keeps Following in reverse-time order. Reposts show when they were reposted.
+Prefer Latest keeps the Following timeline in reverse-time order when X defaults to ranked Popular.
+Following feed runs in an embedded X session with promoted posts filtered and the page header hidden.
+Open Settings (gear) for text size, feed filters, and sign out.
+Google and Apple sign-in complete inside the app.
+Text size defaults to 100% and can go up to 200%.
+
+Open-source by Canadian non-profit Evergreen Labs — sign in with your X account; no separate server setup in the app.
+Text size controls respond immediately when you tap A− / A+.
+On Mac, the feed header sits closer under the window title bar.
+
+Links and media open inside the X session in the app.
+Settings includes feed filters adapted from Minimal Twitter (MIT).

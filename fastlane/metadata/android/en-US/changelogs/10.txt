@@ -1,0 +1,3 @@
+Links in a post open in the browser instead of inside the app.
+Tapping a card opens the original post on X.
+Post headers are easier to scan: larger name, handle underneath, and a clearer split from the body.

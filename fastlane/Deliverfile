@@ -1,0 +1,4 @@
+# frozen_string_literal: true
+
+# App Store Connect locale for deliver metadata / screenshots (folder: metadata/en-US).
+languages(["en-US"])

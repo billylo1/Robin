@@ -1,0 +1,5 @@
+Robin is an open-sourced, unofficial client that shows X posts from people you follow.  It is not affiliated with or sponsored by SpaceXAI.
+
+Robin shows your timeline in a focused session — posts from accounts you follow, in the order they were published. No algorithmic ordering or additional posts by other people you don't follow.
+
+This matters because we use our information stream to form opinions and act; an as-it-happens news feed is good for decision making.

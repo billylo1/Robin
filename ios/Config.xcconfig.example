@@ -1,0 +1,7 @@
+// Copy to Config.xcconfig (gitignored) and fill in.
+// Optional — leave blank to disable Sentry / Aptabase (forks can omit entirely).
+// In xcconfig, // starts a comment — write https:/$()/host for https://host
+
+SENTRY_DSN =
+APTABASE_APP_KEY =
+APTABASE_HOST =

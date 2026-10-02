@@ -1,0 +1,1 @@
+Returning from a post restores the Following feed instead of a blank page. Article and web links open in Chrome Custom Tabs.

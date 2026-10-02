@@ -1,0 +1,8 @@
+sdk.dir=/Users/YOU/Library/Android/sdk
+# Optional — leave blank to disable Sentry
+sentry.dsn=
+# Optional Aptabase (self-hosted or cloud). Leave blank to disable (recommended for forks).
+# aptabase.appKey=A-SH-YOUR_APP_KEY
+# aptabase.host=https://YOUR_APTABASE_HOST
+aptabase.appKey=
+aptabase.host=
