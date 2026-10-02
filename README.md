@@ -5,15 +5,15 @@
 
 ## Why
 
-X is useful for staying current. The default experience buries that in noise — promoted posts, a For You feed of engagement bait, and polarized pile-ons from people you never followed.
+X is useful for staying current. Unfortunately, its default experience "For You" include a lot of noise — promoted posts and polarized pile-ons from people/bots you never followed.
 
 Robin is built around three things that matter when you use X to stay informed:
 
-1. **Up-to-date news from people you follow** — without polarized pile-ons from strangers you never chose to hear from.
-2. **An ad-free experience** — no promoted posts or sponsored content mixed into your timeline.
-3. **No algorithmic feed** — our feed would contain news from people we follow only, nothing added by an algorithm, because we use our information stream to form opinions and act; it should not be ranked or reshaped to steer either.
+1. **Up-to-date news from people you follow** — without the distractions from people you never chose to listen to
+2. **A promotion-free experience** — no sponsored content mixed into your timeline.
+3. **No algorithmic feed** — nothing added by an algorithm, the ordering is purely chronological. Because we use our information stream to form opinions; it's very valuable to have a neutral feed.
 
-Robin is a native **Android** and **iOS** client: an x.com WebView with injected filters that force the Following timeline and hide promoted noise. Sign-in is your normal X cookie session inside the WebView — there is no separate Robin backend.
+Robin is a native **Android** and **iOS** client: an x.com WebView with filters that force the Following timeline and hide promoted noise. Sign-in is your normal X cookie session inside the WebView — there is no separate Robin backend.
 
 ### How much of For You is actually from people you follow?
 
@@ -28,7 +28,7 @@ To put a number on the noise: we scrolled one logged-in **For You** home timelin
 
 In other words, only about **one in ten** posts on For You came from someone that account chose to follow. Roughly **nine in ten** were algorithm add-ons, ads, or similar. (One scroll session — your mix will vary — but the shape of the problem is hard to miss.)
 
-I hope this helps.
+I hope Robin can help stay informed, without getting distracted/annoyed by random posts and replies from strangers.
 
 **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · **Mobile setup:** [docs/mobile.md](docs/mobile.md) · **WebView filters:** [docs/webview-filter.md](docs/webview-filter.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Security:** [SECURITY.md](SECURITY.md)
 
