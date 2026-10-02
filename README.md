@@ -82,13 +82,6 @@ scripts/feed-credibility/       # Optional research tooling (For You vs Followin
 LICENSE / CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
 ```
 
-## Before making the repo public
-
-To publish **Robin** as a new GitHub repo with a single initial commit (no prior git history), see [docs/publish-robin-repo.md](docs/publish-robin-repo.md). That export uses `git archive` of `HEAD`, so MyTwitter history and untracked local secrets stay in this repo. Run it manually when you are ready.
-
-1. Commit the open-source cleanup here first (`git archive` reads `HEAD`).
-2. Confirm `android/local.properties`, `android/keystore.properties`, `ios/Config.xcconfig`, `.env`, `serviceAccount.json`, and `fastlane/.env` are untracked.
-3. On GitHub: set license to MIT, add a description, then flip the repository from private to public.
 
 ## License
 
