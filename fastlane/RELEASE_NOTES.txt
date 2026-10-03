@@ -1,3 +1,4 @@
+Fixed the home feed stalling when scrolling further down the timeline.
 Open the Robin source repository from Settings.
 Settings groups text size, auto-refresh, home feed, and filters.
 Choose Following (by time) or For You for your home timeline.
