@@ -493,11 +493,11 @@ platform :android do
 
   desc "Upload Play Store listing metadata + screenshots only (no AAB)"
   lane :upload_metadata do
-    # Listing text/images are app-level; changelogs attach to the open-testing release.
+    # Listing text/images are app-level; changelogs attach to the internal track release.
     upload_to_play_store(
       package_name: ANDROID_PACKAGE_NAME,
       metadata_path: ANDROID_METADATA_PATH,
-      track: "beta",
+      track: "internal",
       version_code: android_version_code.to_s,
       skip_upload_apk: true,
       skip_upload_aab: true,
@@ -519,9 +519,9 @@ platform :android do
     copy_android_aab_to_dist!
   end
 
-  desc "Bump versionCode, build AAB, upload to Play open testing (beta)"
+  desc "Bump versionCode, build AAB, upload to Play internal testing"
   lane :beta do |options|
-    track = (options[:track] || "beta").to_s
+    track = (options[:track] || "internal").to_s
     release_status = (options[:release_status] || "completed").to_s
 
     bump_android_version_code! unless version_already_bumped?
@@ -594,9 +594,9 @@ platform :android do
   end
 end
 
-desc "Play open testing then TestFlight (Android first)"
+desc "Play internal testing then TestFlight (Android first)"
 lane :beta_both do |options|
-  UI.header("Android → Play beta")
+  UI.header("Android → Play internal")
   Fastlane::LaneManager.cruise_lane("android", "beta", options)
   UI.header("iOS → TestFlight")
   Fastlane::LaneManager.cruise_lane("ios", "beta", options)

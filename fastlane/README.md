@@ -19,7 +19,7 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 [bundle exec] fastlane beta_both
 ```
 
-Play open testing then TestFlight (Android first)
+Play internal testing then TestFlight (Android first)
 
 ----
 
@@ -101,7 +101,7 @@ Build a release AAB locally (no upload)
 [bundle exec] fastlane android beta
 ```
 
-Bump versionCode, build AAB, upload to Play open testing (beta)
+Bump versionCode, build AAB, upload to Play internal testing
 
 ### android release
 

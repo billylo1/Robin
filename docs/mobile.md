@@ -65,7 +65,7 @@ cd android
 
 Output: `android/app/build/outputs/bundle/release/app-release.aab`
 
-Upload that AAB to Play Console → Testing → closed/open testing (or Internal testing). First upload requires creating the Play app for `org.evergreenlabs.robin` and enrolling in Play App Signing.
+Upload that AAB to Play Console → Testing → Internal testing (or use `fastlane android beta`). First upload requires creating the Play app for `org.evergreenlabs.robin` and enrolling in Play App Signing.
 
 ## Store listing graphics
 
