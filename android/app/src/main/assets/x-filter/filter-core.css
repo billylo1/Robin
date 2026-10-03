@@ -131,3 +131,21 @@ html:not([data-mt-boot-ready="1"]) body {
 html[data-mt-boot-ready="1"] body {
   visibility: visible !important;
 }
+
+/*
+ * Android System WebView only (html.mt-android-webview).
+ * A tall x.com feed promotes each photo/video to its own compositor layer
+ * (transform / will-change). Past the first screens those layers stop
+ * rasterizing for seconds. Flatten media layers only — cell translateY
+ * virtualization stays intact.
+ */
+html.mt-android-webview [data-testid="cellInnerDiv"] img,
+html.mt-android-webview [data-testid="cellInnerDiv"] video,
+html.mt-android-webview [data-testid="cellInnerDiv"] canvas,
+html.mt-android-webview article img,
+html.mt-android-webview article video,
+html.mt-android-webview article canvas {
+  transform: none !important;
+  -webkit-transform: none !important;
+  will-change: auto !important;
+}

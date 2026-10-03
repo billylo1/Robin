@@ -155,6 +155,44 @@
     el.style.setProperty("display", "none", "important");
   }
 
+  function setImportant(el, prop, value) {
+    if (!el) return;
+    if (
+      el.style.getPropertyValue(prop) === value &&
+      el.style.getPropertyPriority(prop) === "important"
+    ) {
+      return;
+    }
+    el.style.setProperty(prop, value, "important");
+  }
+
+  /**
+   * Short visible-label sample that does not lay out the subtree.
+   * innerText on a timeline wrapper stringifies every mounted tweet and
+   * gets slower the further down the feed you are.
+   */
+  function boundedText(el, maxLen) {
+    if (!el) return "";
+    var limit = maxLen || 120;
+    var out = "";
+    function walk(node, depth) {
+      if (!node || out.length >= limit || depth > 8) return;
+      if (node.nodeType === 3) {
+        if (node.nodeValue) out += " " + node.nodeValue;
+        return;
+      }
+      if (node.nodeType !== 1) return;
+      if (node.getAttribute && node.getAttribute("data-testid") === "tweet") return;
+      var kids = node.childNodes;
+      for (var i = 0; i < kids.length; i++) {
+        walk(kids[i], depth + 1);
+        if (out.length >= limit) return;
+      }
+    }
+    walk(el, 0);
+    return out.replace(/\s+/g, " ").trim().slice(0, limit).toLowerCase();
+  }
+
   function clearRobinHides() {
     var nodes = document.querySelectorAll("[data-mt-robin-hide]");
     for (var i = 0; i < nodes.length; i++) {
@@ -482,9 +520,19 @@
     return Math.floor(s / 86400) + "d";
   }
 
-  function labelRepostTimes() {
+  function labelRepostTimes(root) {
     if (!currentSettings().preferLatest || !isHomePath()) return;
-    var ctxs = document.querySelectorAll('article [data-testid="socialContext"]');
+    var scope = root && root.querySelectorAll ? root : document;
+    var ctxs;
+    if (
+      scope !== document &&
+      scope.matches &&
+      scope.matches('[data-testid="socialContext"]')
+    ) {
+      ctxs = [scope];
+    } else {
+      ctxs = scope.querySelectorAll('[data-testid="socialContext"]');
+    }
     var now = Date.now();
     for (var i = 0; i < ctxs.length; i++) {
       var ctx = ctxs[i];
@@ -528,11 +576,13 @@
     }
   }
 
-  function hideWhoToFollowBlocks() {
+  function hideWhoToFollowBlocks(root) {
     if (!currentSettings().hideWhoToFollow) return;
-    var headings = document.querySelectorAll("span, h2");
-    for (var i = 0; i < headings.length; i++) {
-      var h = headings[i];
+    var scope = root && root.querySelectorAll ? root : document;
+    var seen = typeof WeakSet === "function" ? new WeakSet() : null;
+    function consider(h) {
+      if (!h || (seen && seen.has(h))) return;
+      if (seen) seen.add(h);
       var t = (h.textContent || "").trim().toLowerCase();
       if (
         t === "who to follow" ||
@@ -546,6 +596,23 @@
         if (block) block.style.setProperty("display", "none", "important");
       }
     }
+    if (scope.matches && scope.matches("h2, span")) consider(scope);
+    var wide =
+      scope === document ||
+      scope === document.documentElement ||
+      scope === document.body;
+    if (wide) {
+      // A document-wide "span" query grows with every tweet still mounted.
+      var heads = scope.querySelectorAll("h2");
+      var spans = scope.querySelectorAll(
+        "[data-testid='cellInnerDiv'] span, section span, aside span, [role='region'] span"
+      );
+      for (var hi = 0; hi < heads.length; hi++) consider(heads[hi]);
+      for (var si = 0; si < spans.length; si++) consider(spans[si]);
+      return;
+    }
+    var local = scope.querySelectorAll("h2, span");
+    for (var li = 0; li < local.length; li++) consider(local[li]);
   }
 
   var LIVE_LINK_RE =
@@ -603,7 +670,8 @@
       var al = (labelled[ai].getAttribute("aria-label") || "").toLowerCase();
       if (al.indexOf("live") !== -1 && al.indexOf("live photo") === -1) return true;
     }
-    var compact = (cell.innerText || "").replace(/\s+/g, " ").trim();
+    // textContent avoids the layout innerText forces on every cell.
+    var compact = (cell.textContent || "").replace(/\s+/g, " ").trim();
     if (compact.length > 280) return false;
     if (/\blive\b/i.test(compact) && (hasLiveLink || liveTestId)) return true;
     if (
@@ -647,13 +715,20 @@
     }
   }
 
-  function hideLiveContentBlocks() {
+  function hideLiveContentBlocks(root) {
     if (!currentSettings().hideLiveContent || !isHomePath()) return;
+    var scope = root && root.querySelectorAll ? root : document;
     // Embedded magenta “+N · Event” chips inside tweets.
-    hideLiveChipNodes(document);
+    hideLiveChipNodes(scope);
     // Dedicated live/broadcast timeline modules (no normal tweet body).
-    var cells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
+    var cells;
+    if (scope.getAttribute && scope.getAttribute("data-testid") === "cellInnerDiv") {
+      cells = [scope];
+    } else {
+      cells = scope.querySelectorAll('[data-testid="cellInnerDiv"]');
+    }
     for (var i = 0; i < cells.length; i++) {
+      if (cells[i].getAttribute("data-mt-robin-hide") === "1") continue;
       if (cellLooksLikeLivePromo(cells[i])) markRobinHide(cells[i]);
     }
   }
@@ -709,6 +784,8 @@
     }
   }
 
+  var chromePassHref = "";
+
   function hidePageHeaderFallback() {
     if (!currentSettings().hidePageHeader || !isHomePath()) return;
 
@@ -716,6 +793,21 @@
       !!currentSettings().forceFollowing &&
       !!currentSettings().preferLatest &&
       !window.__ROBIN_LATEST_OK__;
+
+    // Steady-state scrolling used to re-run the layout walk below on every
+    // mutation. Once chrome is hidden for this URL, a couple of selectors
+    // are enough to notice a remount.
+    if (!deferFeedChrome && chromePassHref === location.href) {
+      var existing = document.querySelector('[data-testid="TopNavBar"]');
+      var barOk = !existing || existing.getAttribute("data-mt-robin-hide") === "1";
+      var composer = document.querySelector(
+        '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]'
+      );
+      var composerOk =
+        !composer ||
+        (composer.closest && composer.closest("[data-mt-robin-hide]"));
+      if (barOk && composerOk) return;
+    }
 
     // Mobile TopNavBar + any banner (mobile spacer or desktop left rail)
     var bar = document.querySelector('[data-testid="TopNavBar"]');
@@ -732,15 +824,15 @@
     // Desktop / Mac: Following switcher + inline composer at top of feed
     var col = document.querySelector('[data-testid="primaryColumn"]');
     if (!col) return;
-    col.style.setProperty("max-width", "min(100%, 840px)", "important");
-    col.style.setProperty("width", "100%", "important");
-    col.style.setProperty("margin-left", "auto", "important");
-    col.style.setProperty("margin-right", "auto", "important");
+    setImportant(col, "max-width", "min(100%, 840px)");
+    setImportant(col, "width", "100%");
+    setImportant(col, "margin-left", "auto");
+    setImportant(col, "margin-right", "auto");
 
     var kids = col.children;
     for (var ci = 0; ci < Math.min(kids.length, 3); ci++) {
-      kids[ci].style.setProperty("max-width", "none", "important");
-      kids[ci].style.setProperty("width", "100%", "important");
+      setImportant(kids[ci], "max-width", "none");
+      setImportant(kids[ci], "width", "100%");
     }
 
     for (var ti = 0; ti < Math.min(kids.length, 8); ti++) {
@@ -748,7 +840,7 @@
       var br = block.getBoundingClientRect();
       if (br.height === 0) continue;
       if (br.top > 240) break;
-      var bt = (block.innerText || "").slice(0, 120).toLowerCase();
+      var bt = boundedText(block, 120);
       var hasCompose = !!block.querySelector(
         '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"], [data-testid="toolBar"], [data-testid="tweetButtonInline"]'
       );
@@ -771,22 +863,26 @@
     }
 
     if (!deferFeedChrome) {
-      var nodes = col.querySelectorAll("div");
-      for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i];
+      // Walk up from the tablist only. querySelectorAll("div") + getComputedStyle
+      // on the whole column was the multi-second hitch deep in the feed.
+      var tablist = col.querySelector(
+        '[data-testid="ScrollSnap-List"], [data-testid="ScrollSnap-SwipeableList"], [role="tablist"]'
+      );
+      var el = tablist;
+      for (var depth = 0; el && el !== col && depth < 8; depth++) {
         var st = window.getComputedStyle(el);
-        if (st.position !== "sticky" && st.position !== "fixed") continue;
         if (
-          el.querySelector(
-            '[role="tablist"], [role="tab"], [data-testid="ScrollSnap-List"], [data-testid="ScrollSnap-SwipeableList"]'
-          )
+          (st.position === "sticky" || st.position === "fixed") &&
+          !el.querySelector('article[data-testid="tweet"]')
         ) {
           markRobinHide(el);
         }
+        el = el.parentElement;
       }
     }
 
     hideInlineHomeComposer(col);
+    if (!deferFeedChrome) chromePassHref = location.href;
   }
 
   /** Hide the home “What’s happening?” draft box; never touch reply composers. */
@@ -811,7 +907,7 @@
         }
         var r = p.getBoundingClientRect();
         if (r.height >= 48 && r.height <= 520 && r.top < 480) {
-          var t = (p.innerText || "").slice(0, 200).toLowerCase();
+          var t = boundedText(p, 200);
           var looksCompose =
             t.indexOf("what") !== -1 ||
             t.indexOf("happening") !== -1 ||
@@ -874,7 +970,14 @@
       if (window.__ROBIN_SCALE_LINE_HEIGHT__) scaleFixedLineHeights(scale);
       return;
     }
-    root.style.zoom = String(scale);
+    // zoom:1 still puts the document on Android WebView's zoom path, which
+    // rasterizes slower as the feed gets taller. Only zoom when asked.
+    if (scale === 1) {
+      if (root.style.zoom) root.style.removeProperty("zoom");
+      return;
+    }
+    var zoom = String(scale);
+    if (root.style.zoom !== zoom) root.style.zoom = zoom;
   }
 
   window.__ROBIN_APPLY_FONT_SCALE__ = applyFontScale;
@@ -1061,15 +1164,30 @@
       document.documentElement,
       document.body,
     ];
-    var nodes = document.querySelectorAll("div");
-    for (var i = 0; i < Math.min(nodes.length, 80); i++) {
-      if (nodes[i].scrollTop > 0) roots.push(nodes[i]);
-    }
     for (var r = 0; r < roots.length; r++) {
-      var el = roots[r];
-      if (el && typeof el.scrollTop === "number" && el.scrollTop > 80) {
-        return false;
-      }
+      var topEl = roots[r];
+      if (topEl && topEl.scrollTop > 80) return false;
+    }
+    var start =
+      document.querySelector('[data-testid="primaryColumn"]') || document.body;
+    if (!start) return true;
+    var ancestor = start;
+    for (var a = 0; a < 8 && ancestor; a++) {
+      if (ancestor.scrollTop > 80) return false;
+      ancestor = ancestor.parentElement;
+    }
+    // Shallow walk only. querySelectorAll("div") materializes every tweet div
+    // and was dominating the main thread further down the feed.
+    var stack = [start];
+    var seen = 0;
+    while (stack.length && seen < 40) {
+      var node = stack.pop();
+      seen++;
+      if (!node || node.nodeType !== 1) continue;
+      if (node.scrollTop > 80) return false;
+      if (node.getAttribute && node.getAttribute("data-testid") === "tweet") continue;
+      var kids = node.children;
+      for (var i = 0; i < kids.length && i < 6; i++) stack.push(kids[i]);
     }
     return true;
   }
@@ -1210,6 +1328,43 @@
     if (isBootReady()) revealBoot();
   }
 
+  var DRAIN_BUDGET = 8;
+  var needsFullPass = true;
+  var pendingNodes = [];
+  var pendingSeen = typeof WeakSet === "function" ? new WeakSet() : null;
+  var scrolling = false;
+  var scrollIdleTimer = 0;
+
+  function rememberPending(n) {
+    if (!n || n.nodeType !== 1) return;
+    if (pendingSeen) {
+      if (pendingSeen.has(n)) return;
+      pendingSeen.add(n);
+    }
+    pendingNodes.push(n);
+  }
+
+  function queueMutationNode(n) {
+    if (!n) return;
+    if (n.nodeType === 3) n = n.parentElement;
+    if (!n || n.nodeType !== 1) return;
+    if (n.classList && n.classList.contains("mt-repost-time")) return;
+    var cell = n.closest && n.closest('[data-testid="cellInnerDiv"]');
+    rememberPending(cell || n);
+  }
+
+  function expandWorkItem(n) {
+    if (!n || !n.isConnected || !n.querySelectorAll) return [];
+    if (n.getAttribute && n.getAttribute("data-testid") === "cellInnerDiv") return [n];
+    var cells = n.querySelectorAll('[data-testid="cellInnerDiv"]');
+    if (cells.length > 1) {
+      var out = [];
+      for (var i = 0; i < cells.length; i++) out.push(cells[i]);
+      return out;
+    }
+    return [n];
+  }
+
   function tick() {
     syncPageHeaderFlags();
     applyFontScale();
@@ -1217,12 +1372,44 @@
     forceForYou();
     hideForYouTab();
     preferLatest();
-    labelRepostTimes();
-    hideOpenAppNags();
-    hideWhoToFollowBlocks();
-    hideLiveContentBlocks();
-    hidePageHeaderFallback();
-    hideComposeButtonFallback();
+
+    if (needsFullPass) {
+      needsFullPass = false;
+      pendingNodes = [];
+      pendingSeen = typeof WeakSet === "function" ? new WeakSet() : null;
+      labelRepostTimes(document);
+      hideOpenAppNags();
+      hideWhoToFollowBlocks(document);
+      hideLiveContentBlocks(document);
+      hidePageHeaderFallback();
+      hideComposeButtonFallback();
+    } else {
+      var batch = pendingNodes;
+      pendingNodes = [];
+      pendingSeen = typeof WeakSet === "function" ? new WeakSet() : null;
+      var work = [];
+      for (var i = 0; i < batch.length; i++) {
+        var parts = expandWorkItem(batch[i]);
+        for (var j = 0; j < parts.length; j++) work.push(parts[j]);
+      }
+      var limit = Math.min(work.length, DRAIN_BUDGET);
+      for (var w = 0; w < limit; w++) {
+        var n = work[w];
+        labelRepostTimes(n);
+        hideWhoToFollowBlocks(n);
+        hideLiveContentBlocks(n);
+      }
+      if (work.length > limit) {
+        for (var k = limit; k < work.length; k++) rememberPending(work[k]);
+        schedule();
+      }
+      // Header walk early-returns once settled. Compose / nag selectors stay
+      // narrow (href and testid), so they can run on the incremental path.
+      hidePageHeaderFallback();
+      hideComposeButtonFallback();
+      hideOpenAppNags();
+    }
+
     autoClickNewPostsPill();
     maybeRevealBoot();
   }
@@ -1230,38 +1417,75 @@
   document.addEventListener("click", onUserTabClick, true);
 
   var scheduled = false;
+  var observer = new MutationObserver(function (records) {
+    for (var i = 0; i < records.length; i++) {
+      var added = records[i].addedNodes;
+      for (var j = 0; j < added.length; j++) queueMutationNode(added[j]);
+    }
+    schedule();
+  });
+
+  function observeFeed() {
+    try {
+      observer.observe(document.documentElement || document, {
+        childList: true,
+        subtree: true,
+      });
+    } catch (e) {}
+  }
+
+  function runScheduled() {
+    scheduled = false;
+    // Let the WebView paint newly scrolled-in cells before filter work.
+    if (bootRevealed && scrolling) return;
+    observer.disconnect();
+    try {
+      tick();
+    } finally {
+      observeFeed();
+    }
+  }
+
   function schedule() {
     if (scheduled) return;
     scheduled = true;
-    setTimeout(function () {
-      scheduled = false;
-      tick();
-    }, 80);
+    setTimeout(runScheduled, bootRevealed && scrolling ? 160 : 50);
   }
 
-  var observer = new MutationObserver(function () {
+  function onFeedScroll() {
+    if (!bootRevealed) return;
+    scrolling = true;
+    clearTimeout(scrollIdleTimer);
+    scrollIdleTimer = setTimeout(function () {
+      scrolling = false;
+      schedule();
+    }, 140);
+  }
+  window.addEventListener("scroll", onFeedScroll, true);
+
+  function requestFullPass() {
+    needsFullPass = true;
+    chromePassHref = "";
     schedule();
-  });
-  observer.observe(document.documentElement || document, {
-    childList: true,
-    subtree: true,
-  });
+  }
+
+  observeFeed();
 
   // SPA path changes
   var lastHref = location.href;
   setInterval(function () {
     if (location.href !== lastHref) {
       lastHref = location.href;
-      schedule();
+      requestFullPass();
     }
   }, 500);
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", tick);
+    document.addEventListener("DOMContentLoaded", requestFullPass);
   } else {
-    tick();
+    requestFullPass();
   }
-  setTimeout(tick, 400);
-  setTimeout(tick, 1200);
+  setTimeout(requestFullPass, 400);
+  setTimeout(requestFullPass, 1200);
   setTimeout(maybeRevealBoot, BOOT_HARD_MS);
 })();

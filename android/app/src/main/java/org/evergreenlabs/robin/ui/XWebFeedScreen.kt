@@ -15,6 +15,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -72,7 +73,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -123,15 +123,22 @@ private val SCROLL_PROBE_JS = """
   if (window.__ROBIN_SCROLL_PROBE__) return;
   window.__ROBIN_SCROLL_PROBE__ = true;
   var last = -1;
+  var pending = 0;
+  var queued = false;
   function report(y) {
-    y = Math.max(0, Math.round(y || 0));
-    if (y === last) return;
-    last = y;
-    try {
-      if (window.RobinScroll && window.RobinScroll.post) {
-        window.RobinScroll.post(y);
-      }
-    } catch (e) {}
+    pending = Math.max(0, Math.round(y || 0));
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () {
+      queued = false;
+      if (pending === last) return;
+      last = pending;
+      try {
+        if (window.RobinScroll && window.RobinScroll.post) {
+          window.RobinScroll.post(pending);
+        }
+      } catch (e) {}
+    });
   }
   function fromEvent(e) {
     var t = e && e.target;
@@ -478,7 +485,10 @@ fun XWebFeedScreen(
     var canGoBack by remember { mutableStateOf(false) }
     var pageUrl by remember { mutableStateOf<String?>(null) }
     var showScrollTop by remember { mutableStateOf(false) }
-    var lastScrollY by remember { mutableIntStateOf(0) }
+    // Plain holders: writing Compose snapshot state on every scroll pixel
+    // recomposes the screen and stalls WebView tile raster, which shows up
+    // as multi-second blank regions further down the feed.
+    val scrollYPx = remember { intArrayOf(0) }
     /** Covers the WebView until filter-core calls RobinBoot.ready() (or timeout). */
     val showBootCoverState = remember { mutableStateOf(true) }
     var showBootCover by showBootCoverState
@@ -491,7 +501,7 @@ fun XWebFeedScreen(
     /** Frozen old feed shown over the WebView during a warm reload; crossfaded out on boot. */
     var warmSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
     val warmSnapshotAlpha = remember { Animatable(1f) }
-    var lastInteractionAtMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val lastInteractionAtMs = remember { longArrayOf(System.currentTimeMillis()) }
     var isResumed by remember {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
     }
@@ -514,19 +524,41 @@ fun XWebFeedScreen(
         wv.evaluateJavascript(
             """
             (function(){
-              var r = document.scrollingElement || document.documentElement;
-              if (r && r.scrollTo) r.scrollTo({ top: 0, behavior: 'smooth' });
-              else { document.documentElement.scrollTop = 0; document.body.scrollTop = 0; }
-              var nodes = document.querySelectorAll('div');
-              for (var i = 0; i < Math.min(nodes.length, 80); i++) {
-                var el = nodes[i];
-                if (el.scrollTop > 0) el.scrollTop = 0;
+              var roots = [];
+              function add(el) { if (el) roots.push(el); }
+              add(document.scrollingElement);
+              add(document.documentElement);
+              add(document.body);
+              add(document.querySelector('main[role="main"]'));
+              var col = document.querySelector('[data-testid="primaryColumn"]');
+              var ancestor = col;
+              for (var a = 0; a < 8 && ancestor; a++) {
+                add(ancestor);
+                ancestor = ancestor.parentElement;
+              }
+              var stack = col ? [col] : [];
+              var seen = 0;
+              while (stack.length && seen < 60) {
+                var node = stack.pop();
+                seen++;
+                if (!node || node.nodeType !== 1) continue;
+                if (node.getAttribute && node.getAttribute('data-testid') === 'tweet') continue;
+                add(node);
+                var kids = node.children;
+                for (var i = 0; i < kids.length && i < 8; i++) stack.push(kids[i]);
+              }
+              for (var r = 0; r < roots.length; r++) {
+                var el = roots[r];
+                if (el && el.scrollTop > 0) {
+                  if (el.scrollTo) el.scrollTo({ top: 0, behavior: 'smooth' });
+                  else el.scrollTop = 0;
+                }
               }
             })();
             """.trimIndent(),
             null,
         )
-        lastScrollY = 0
+        scrollYPx[0] = 0
         showScrollTop = false
     }
 
@@ -589,7 +621,7 @@ fun XWebFeedScreen(
         if (showBootCover) return false
         if (warmSnapshot != null) return false
         if (!isFeedHome(pageUrl)) return false
-        if (lastScrollY > NEAR_TOP_PX) return false
+        if (scrollYPx[0] > NEAR_TOP_PX) return false
         if (progress in 0f..<1f && progress > 0f) return false
         if (refreshIntervalSeconds > 0) {
             val now = System.currentTimeMillis()
@@ -603,13 +635,13 @@ fun XWebFeedScreen(
     }
 
     fun noteUserInteraction() {
-        lastInteractionAtMs = System.currentTimeMillis()
+        lastInteractionAtMs[0] = System.currentTimeMillis()
     }
 
     /** Automatic refreshes wait until the user has left the feed alone. */
     fun userIsIdle(): Boolean {
         if (infoPresented) return false
-        return System.currentTimeMillis() - lastInteractionAtMs >= FeedRefreshIntervalStore.IDLE_MS
+        return System.currentTimeMillis() - lastInteractionAtMs[0] >= FeedRefreshIntervalStore.IDLE_MS
     }
 
     fun requestNearTopAutoRefresh(userInitiated: Boolean = false) {
@@ -623,13 +655,14 @@ fun XWebFeedScreen(
 
     /** Back-to-top only — native header stays visible. */
     fun onWebScroll(scrollY: Int) {
-        lastScrollY = scrollY
-        showScrollTop = scrollY >= SCROLL_TOP_BUTTON_PX
+        scrollYPx[0] = scrollY
+        val show = scrollY >= SCROLL_TOP_BUTTON_PX
+        if (show != showScrollTop) showScrollTop = show
         noteUserInteraction()
     }
 
     fun onTitleTap() {
-        if (lastScrollY <= NEAR_TOP_PX) {
+        if (scrollYPx[0] <= NEAR_TOP_PX) {
             requestNearTopAutoRefresh(userInitiated = true)
         } else {
             scrollWebToTop()
@@ -823,6 +856,9 @@ fun XWebFeedScreen(
                     settings.javaScriptCanOpenWindowsAutomatically = true
                     // Mobile Chrome UA so X serves TopNavBar layout (same CSS path as iOS).
                     settings.userAgentString = MOBILE_CHROME_USER_AGENT
+                    // A hardware texture layer snapshots the WebView and updates
+                    // late on long flings (blank feed for seconds). Draw directly.
+                    setLayerType(View.LAYER_TYPE_NONE, null)
 
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)

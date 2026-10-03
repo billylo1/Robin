@@ -54,6 +54,8 @@ object XFilterInjector {
                 }
                 var root = document.documentElement;
                 if (root) {
+                  // Android WebView paint path (see filter-core.css). iOS does not set this.
+                  root.classList.add('mt-android-webview');
                   // Full navigations re-run bootstrap; mask until filter boot settles.
                   // Skip if filter already installed (may evaluate bootstrap twice).
                   if (!window.__ROBIN_FILTER_INSTALLED__) {
@@ -134,6 +136,7 @@ object XFilterInjector {
               if (s) s.disabled = !cfg.hidePromoted;
               var root = document.documentElement;
               if (!root) return;
+              root.classList.add('mt-android-webview');
               var p = location.pathname || '';
               var home = p === '/' || p === '/home' || p.indexOf('/home') === 0;
               if (home) root.setAttribute('data-mt-home', '1');
@@ -147,7 +150,9 @@ object XFilterInjector {
                 root.removeAttribute('data-mt-defer-feed-chrome');
               }
               var scale = cfg.fontScale;
-              if (typeof scale === 'number' && scale > 0) root.style.zoom = String(scale);
+              if (typeof scale !== 'number' || !(scale > 0)) scale = 1;
+              if (scale === 1) root.style.removeProperty('zoom');
+              else root.style.zoom = String(scale);
             })();
             """.trimIndent(),
             null,
