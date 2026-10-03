@@ -46,7 +46,7 @@
 		E75FB2F5E8DDB326576ED11A /* x-filter */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "x-filter"; path = "Robin/Resources/x-filter"; sourceTree = SOURCE_ROOT; };
 		F3E22E8D646E250837757F79 /* Robin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Robin.entitlements; sourceTree = "<group>"; };
 		FB76E59A7154998AEA2DEA8E /* Robin.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		"TEMP_05AC1F3E-10C9-4C41-8C13-3CCBF35C1E2B" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -143,10 +143,10 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		"TEMP_D71E9A23-D9CC-4DD4-A5E4-256DA6C2C523" /* ios */ = {
+		"TEMP_2B2068A8-E140-4419-B455-9519AFBB19C1" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */,
+				"TEMP_05AC1F3E-10C9-4C41-8C13-3CCBF35C1E2B" /* Config.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -257,7 +257,7 @@
 				CODE_SIGN_ENTITLEMENTS = Robin/Robin.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 48;
+				CURRENT_PROJECT_VERSION = 49;
 				DEVELOPMENT_TEAM = X5J5T5UT6J;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Robin/Info.plist;
@@ -283,7 +283,7 @@
 				CODE_SIGN_ENTITLEMENTS = Robin/RobinRelease.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 48;
+				CURRENT_PROJECT_VERSION = 49;
 				DEVELOPMENT_TEAM = X5J5T5UT6J;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Robin/Info.plist;
@@ -303,7 +303,7 @@
 		};
 		C47C3DAB46D9040153520C7E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_05AC1F3E-10C9-4C41-8C13-3CCBF35C1E2B" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -361,7 +361,7 @@
 		};
 		D80246C00E14E3392654CD99 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_E10B993F-FFB1-42F2-959B-99C1DE4807B0" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_05AC1F3E-10C9-4C41-8C13-3CCBF35C1E2B" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
