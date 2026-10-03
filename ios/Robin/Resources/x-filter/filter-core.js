@@ -1436,13 +1436,14 @@
 
   function runScheduled() {
     scheduled = false;
-    // Let the WebView paint newly scrolled-in cells before filter work.
+    // Virtualizer commits are the scroll-critical work. Filter ticks wait
+    // until the fling ends so newly scrolled-in cells can mount in time.
     if (bootRevealed && scrolling) return;
     observer.disconnect();
     try {
       tick();
     } finally {
-      observeFeed();
+      if (!scrolling) observeFeed();
     }
   }
 
@@ -1452,16 +1453,82 @@
     setTimeout(runScheduled, bootRevealed && scrolling ? 160 : 50);
   }
 
+  function queueMountedCells() {
+    var cells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
+    for (var i = 0; i < cells.length; i++) rememberPending(cells[i]);
+  }
+
+  // X updates the timeline on a 100ms throttle and, while a fling is in
+  // progress, shrinks the mounted window to half a viewport. On Android
+  // WebView that update is also queued through requestIdleCallback, which
+  // does not run until the fling slows down, so the viewport is white for
+  // the whole gap. Run the update on the next frame, keep the idle window,
+  // and mount several viewports ahead. The stock 2.5-viewport window is
+  // left behind by one fast fling; about eight viewports stays filled.
+  // React replaces props on each commit, so the ratios have to be forced
+  // inside the candidate pass or the next update snaps the window back.
+  function patchAndroidScroller(s) {
+    if (!s || s.__robinFast) return;
+    var root = document.documentElement;
+    if (!root || !root.classList.contains("mt-android-webview")) return;
+    if (typeof s._update !== "function" || typeof s._handleScroll !== "function") return;
+    s.__robinFast = true;
+    if (typeof s._getRenderCandidates === "function") {
+      var origCandidates = s._getRenderCandidates;
+      s._getRenderCandidates = function () {
+        if (this.props) {
+          this.props.preferredOffscreenToViewportRatio = 8;
+          this.props.minimumOffscreenToViewportRatio = 6;
+        }
+        return origCandidates.apply(this, arguments);
+      };
+    }
+    var update = s._update.bind(s);
+    var queued = false;
+    function pump() {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(function () {
+        queued = false;
+        try {
+          update();
+        } catch (e) {}
+      });
+    }
+    s._scheduleCriticalUpdate = pump;
+    s._scheduleCriticalUpdateThrottled = pump;
+    var origScroll = s._handleScroll;
+    s._handleScroll = function () {
+      var result = origScroll.apply(this, arguments);
+      this._isIdle = true;
+      return result;
+    };
+    s._isIdle = true;
+    try {
+      update();
+    } catch (e) {}
+  }
+
   function onFeedScroll() {
+    patchAndroidScroller(window.scroller);
     if (!bootRevealed) return;
-    scrolling = true;
+    if (!scrolling) {
+      scrolling = true;
+      // Drop the document observer for the whole gesture. Its callback runs
+      // on every cell X mounts and was holding the virtualizer a full second
+      // behind a fast fling (white viewport until the scroll slowed).
+      try {
+        observer.disconnect();
+      } catch (e) {}
+    }
     clearTimeout(scrollIdleTimer);
     scrollIdleTimer = setTimeout(function () {
       scrolling = false;
+      queueMountedCells();
       schedule();
-    }, 140);
+    }, 120);
   }
-  window.addEventListener("scroll", onFeedScroll, true);
+  window.addEventListener("scroll", onFeedScroll, { capture: true, passive: true });
 
   function requestFullPass() {
     needsFullPass = true;
@@ -1474,6 +1541,7 @@
   // SPA path changes
   var lastHref = location.href;
   setInterval(function () {
+    patchAndroidScroller(window.scroller);
     if (location.href !== lastHref) {
       lastHref = location.href;
       requestFullPass();

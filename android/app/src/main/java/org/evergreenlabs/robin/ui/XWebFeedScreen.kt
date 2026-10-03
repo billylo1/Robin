@@ -122,23 +122,31 @@ private val SCROLL_PROBE_JS = """
 (function(){
   if (window.__ROBIN_SCROLL_PROBE__) return;
   window.__ROBIN_SCROLL_PROBE__ = true;
-  var last = -1;
+  var lastPosted = -1;
   var pending = 0;
-  var queued = false;
+  var idleTimer = 0;
+  function postNow(y) {
+    if (y === lastPosted) return;
+    lastPosted = y;
+    try {
+      if (window.RobinScroll && window.RobinScroll.post) {
+        window.RobinScroll.post(y);
+      }
+    } catch (e) {}
+  }
+  // RobinScroll.post is a synchronous bridge. Calling it every frame stalls
+  // the renderer for the whole fling, so the timeline stays white until the
+  // gesture ends. Post only when the back-to-top / near-top flags change,
+  // then once more when scrolling pauses.
   function report(y) {
     pending = Math.max(0, Math.round(y || 0));
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(function () {
-      queued = false;
-      if (pending === last) return;
-      last = pending;
-      try {
-        if (window.RobinScroll && window.RobinScroll.post) {
-          window.RobinScroll.post(pending);
-        }
-      } catch (e) {}
-    });
+    var show = pending >= 400;
+    var near = pending <= 80;
+    var prevShow = lastPosted >= 400;
+    var prevNear = lastPosted >= 0 && lastPosted <= 80;
+    if (lastPosted < 0 || show !== prevShow || near !== prevNear) postNow(pending);
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () { postNow(pending); }, 160);
   }
   function fromEvent(e) {
     var t = e && e.target;
