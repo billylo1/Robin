@@ -47,13 +47,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        val filter = IntentFilter("org.evergreenlabs.robin.RUN_BENCHMARK")
-        ContextCompat.registerReceiver(
-            this,
-            benchmarkReceiver,
-            filter,
-            ContextCompat.RECEIVER_EXPORTED,
-        )
+        if (BuildConfig.DEBUG) {
+            val filter = IntentFilter("org.evergreenlabs.robin.RUN_BENCHMARK")
+            ContextCompat.registerReceiver(
+                this,
+                benchmarkReceiver,
+                filter,
+                ContextCompat.RECEIVER_EXPORTED,
+            )
+        }
 
         setContent {
             val userFontScale by AppGraph.fontScale.scale.collectAsStateWithLifecycle()
@@ -75,8 +77,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        try {
-            unregisterReceiver(benchmarkReceiver)
-        } catch (_: Exception) {}
+        if (BuildConfig.DEBUG) {
+            try {
+                unregisterReceiver(benchmarkReceiver)
+            } catch (_: Exception) {}
+        }
     }
 }

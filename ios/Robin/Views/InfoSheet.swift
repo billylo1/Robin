@@ -112,6 +112,7 @@ struct InfoSheet: View {
                     )
                 }
 
+                #if DEBUG
                 Section("Performance Benchmark") {
                     let current = chrome.benchmark.latestResult ?? chrome.benchmark.baselineResult
                     let delta = current.deltaVs(baseline: chrome.benchmark.baselineResult)
@@ -185,6 +186,7 @@ struct InfoSheet: View {
                         }
                     }
                 }
+                #endif
 
                 Section("Credits") {
                     Text("Feed filters adapted from Minimal Theme for Twitter / X by Typefully (MIT).")

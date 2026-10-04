@@ -141,6 +141,9 @@ flowchart TD
 
 ### Method 1: In-App Interactive Execution (Android & iOS UI)
 
+> [!NOTE]
+> The **Performance Benchmark** section is restricted to **Debug builds** only (`BuildConfig.DEBUG` on Android and `#if DEBUG` on iOS). It is automatically stripped from production Release builds to keep the user interface clean and prevent exposing developer diagnostics to end users.
+
 Use this method to test the live user experience directly on a phone or simulator:
 
 1. Launch **Robin** on your device or emulator.

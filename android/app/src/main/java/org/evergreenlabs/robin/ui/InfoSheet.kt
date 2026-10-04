@@ -1,5 +1,6 @@
 package org.evergreenlabs.robin.ui
 
+import org.evergreenlabs.robin.BuildConfig
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,10 +116,12 @@ fun InfoSheet(
             Spacer(modifier = Modifier.height(12.dp))
             ShowTogglesSection()
             Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(12.dp))
-            PerformanceBenchmarkSection()
-            Spacer(modifier = Modifier.height(16.dp))
+            if (BuildConfig.DEBUG) {
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+                PerformanceBenchmarkSection()
+                Spacer(modifier = Modifier.height(16.dp))
+            }
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
             Text(
