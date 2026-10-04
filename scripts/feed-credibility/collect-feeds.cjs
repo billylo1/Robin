@@ -30,7 +30,7 @@ const OUT_DIR = path.resolve(arg('out', path.join(__dirname, 'out')));
 const PROFILE_DIR = process.env.FEED_CRED_PROFILE || path.join(os.homedir(), '.cache', 'feed-credibility-profile');
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 const PAGE_RESPONSE_TIMEOUT_MS = 20 * 1000;
-const MAX_IDLE_SCROLLS = 4;
+const MAX_REPLAY_PAGES = 8;
 
 const FEEDS = [
   { key: 'for_you', tab: 'For you', op: 'HomeTimeline' },
@@ -91,39 +91,149 @@ function extractTweets(json) {
   return out;
 }
 
-async function collectFeed(page, feed) {
-  const tweets = new Map();
-  const isFeedResponse = (res) => res.url().includes(`/${feed.op}?`) && res.status() === 200;
-
-  const onResponse = async (res) => {
-    if (!isFeedResponse(res)) return;
-    try {
-      for (const t of extractTweets(await res.json())) if (!tweets.has(t.id)) tweets.set(t.id, t);
-    } catch (err) {
-      console.warn(`[${feed.key}] could not parse response: ${err.message}`);
+// HomeLatestTimeline serves both Following → Popular (enableRanking true) and
+// Following → Recent (false). For You (HomeTimeline) is always ranked and has
+// no public X API equivalent — only reverse_chronological exists, and that is Following.
+function bottomCursor(json) {
+  const instructions = json?.data?.home?.home_timeline_urt?.instructions || [];
+  for (const ins of instructions) {
+    const entries = ins.entries || (ins.entry ? [ins.entry] : []);
+    for (const entry of entries) {
+      const c = entry.content || {};
+      if (c.cursorType === 'Bottom' && c.value) return c.value;
     }
+  }
+  return null;
+}
+
+function replayHeaders(req) {
+  const headers = { ...req.headers() };
+  for (const key of ['content-length', 'host', 'connection']) delete headers[key];
+  return headers;
+}
+
+function parseVariables(req) {
+  const url = new URL(req.url());
+  const fromQuery = url.searchParams.get('variables');
+  if (fromQuery) return { kind: 'query', vars: JSON.parse(fromQuery), post: '' };
+  const post = req.postData() || '';
+  if (post) {
+    try {
+      const json = JSON.parse(post);
+      if (json && json.variables) return { kind: 'json', vars: json.variables, post };
+    } catch {
+      /* form body */
+    }
+    const params = new URLSearchParams(post);
+    if (params.get('variables')) return { kind: 'form', vars: JSON.parse(params.get('variables')), post };
+  }
+  const keys = [...url.searchParams.keys()].join(',') || 'none';
+  throw new Error(`${req.method()} ${url.pathname} has no variables (query keys: ${keys}, post ${post.length} chars)`);
+}
+
+// Replays the timeline request the page just made. Following forces enableRanking
+// false (Recent). Pagination follows the Bottom cursor. The public X API has no For You timeline.
+async function replayFeed(page, seedRes, feed) {
+  const req = seedRes.request();
+  const parsed = parseVariables(req);
+  const headers = replayHeaders(req);
+  const tweets = new Map();
+  const seenCursors = new Set();
+  let cursor;
+  console.log(`[${feed.key}] replaying ${parsed.kind} request, enableRanking seed=${parsed.vars.enableRanking}`);
+  for (let pageNo = 0; pageNo < MAX_REPLAY_PAGES && tweets.size < PER_FEED; pageNo++) {
+    const vars = { ...parsed.vars };
+    if (feed.key === 'following') vars.enableRanking = false;
+    if (cursor) vars.cursor = cursor;
+    else delete vars.cursor;
+    const url = new URL(req.url());
+    let res;
+    if (parsed.kind === 'query') {
+      url.searchParams.set('variables', JSON.stringify(vars));
+      res = await page.request.fetch(url.toString(), { method: req.method(), headers, timeout: 25_000 });
+    } else if (parsed.kind === 'json') {
+      const body = JSON.parse(parsed.post);
+      body.variables = vars;
+      res = await page.request.fetch(url.toString(), {
+        method: 'POST',
+        headers,
+        data: JSON.stringify(body),
+        timeout: 25_000,
+      });
+    } else {
+      const params = new URLSearchParams(parsed.post);
+      params.set('variables', JSON.stringify(vars));
+      res = await page.request.fetch(url.toString(), {
+        method: 'POST',
+        headers,
+        data: params.toString(),
+        timeout: 25_000,
+      });
+    }
+    if (!res.ok()) {
+      console.warn(`[${feed.key}] replay HTTP ${res.status()} on page ${pageNo + 1}`);
+      break;
+    }
+    const json = await res.json();
+    const batch = extractTweets(json);
+    for (const t of batch) if (!tweets.has(t.id)) tweets.set(t.id, t);
+    const next = bottomCursor(json);
+    console.log(`[${feed.key}] ${tweets.size}/${PER_FEED} (page ${pageNo + 1}, +${batch.length})`);
+    if (!next || seenCursors.has(next)) break;
+    seenCursors.add(next);
+    cursor = next;
+  }
+  return [...tweets.values()].slice(0, PER_FEED);
+}
+
+function isOp(res, op) {
+  return res.status() === 200 && res.url().includes(`/${op}`);
+}
+
+async function collectFeed(page, feed) {
+  const hits = [];
+  const graphql = new Set();
+  const onResponse = (res) => {
+    if (res.status() !== 200) return;
+    if (res.url().includes('/graphql/')) {
+      try {
+        graphql.add(new URL(res.url()).pathname.split('/').pop());
+      } catch {
+        /* ignore */
+      }
+    }
+    if (isOp(res, 'HomeTimeline') || isOp(res, 'HomeLatestTimeline')) hits.push(res);
   };
   page.on('response', onResponse);
-
-  await page.goto('https://x.com/home');
-  const tab = page.getByRole('tab', { name: feed.tab, exact: true });
-  await tab.waitFor();
-  const first = page.waitForResponse(isFeedResponse, { timeout: PAGE_RESPONSE_TIMEOUT_MS }).catch(() => null);
-  await tab.click();
-  await first;
-
-  let idle = 0;
-  while (tweets.size < PER_FEED && idle < MAX_IDLE_SCROLLS) {
-    const before = tweets.size;
-    const next = page.waitForResponse(isFeedResponse, { timeout: PAGE_RESPONSE_TIMEOUT_MS }).catch(() => null);
-    await page.mouse.wheel(0, 4000);
-    await next;
-    idle = tweets.size > before ? 0 : idle + 1;
-    console.log(`[${feed.key}] ${tweets.size}/${PER_FEED}`);
+  try {
+    if (!page.url().includes('x.com/home')) {
+      await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded' });
+    }
+    const tab = page.getByRole('tab', { name: feed.tab, exact: true });
+    await tab.waitFor();
+    if ((await tab.getAttribute('aria-selected')) !== 'true') {
+      const waited = page.waitForResponse((res) => isOp(res, feed.op), { timeout: PAGE_RESPONSE_TIMEOUT_MS }).catch(() => null);
+      await tab.click({ timeout: 10_000, noWaitAfter: true });
+      await waited;
+    }
+    let seed = [...hits].reverse().find((res) => isOp(res, feed.op));
+    if (!seed) {
+      // Cached tab paints "See new posts" without a new timeline request. Reload once.
+      const waited = page.waitForResponse((res) => isOp(res, feed.op), { timeout: PAGE_RESPONSE_TIMEOUT_MS }).catch(() => null);
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await waited;
+      seed = [...hits].reverse().find((res) => isOp(res, feed.op));
+    }
+    if (!seed) {
+      const shot = path.join(OUT_DIR, `${feed.key}-fail.png`);
+      await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
+      throw new Error(`no ${feed.op} response (graphql: ${[...graphql].slice(0, 12).join(', ') || 'none'})`);
+    }
+    console.log(`[${feed.key}] captured ${feed.op}; replaying`);
+    return await replayFeed(page, seed, feed);
+  } finally {
+    page.off('response', onResponse);
   }
-
-  page.off('response', onResponse);
-  return [...tweets.values()].slice(0, PER_FEED);
 }
 
 async function main() {
@@ -142,14 +252,17 @@ async function main() {
   console.log('Waiting for X home timeline (log in in the browser window if prompted)…');
   await page.getByRole('tab', { name: 'Following', exact: true }).waitFor({ timeout: LOGIN_TIMEOUT_MS });
 
-  const result = { collectedAt: new Date().toISOString(), feeds: {} };
+  const result = {
+    collectedAt: new Date().toISOString(),
+    source: 'x.com session (For You is not in the public X API; reverse_chronological is Following only)',
+    feeds: {},
+  };
+  const file = path.join(OUT_DIR, 'feeds.json');
   for (const feed of FEEDS) {
     result.feeds[feed.key] = await collectFeed(page, feed);
     console.log(`[${feed.key}] collected ${result.feeds[feed.key].length} tweets`);
+    fs.writeFileSync(file, JSON.stringify(result, null, 2));
   }
-
-  const file = path.join(OUT_DIR, 'feeds.json');
-  fs.writeFileSync(file, JSON.stringify(result, null, 2));
   console.log(`Wrote ${file}`);
   await context.close();
 }

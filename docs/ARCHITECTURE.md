@@ -29,7 +29,7 @@ flowchart LR
 | [`android/`](../android/) | Jetpack Compose (minSdk 33): `XWebFeedScreen` WebView + `assets/x-filter` inject. Settings for text size, filter toggles, and X sign-out (cookie clear). Optional Sentry via gitignored `sentry.dsn` / `SENTRY_DSN`. Optional Aptabase via `aptabase.appKey` + `aptabase.host` (empty ⇒ off). See [`docs/webview-filter.md`](webview-filter.md) |
 | [`ios/`](../ios/) | SwiftUI (iOS 18+): `XWebFeedView` WKWebView + `Resources/x-filter` inject (parity with Android). Settings for text size, filter toggles, and X sign-out (`WKWebsiteDataStore`). Optional Sentry / Aptabase via gitignored `Config.xcconfig`. See [`docs/webview-filter.md`](webview-filter.md) |
 | [`fastlane/`](../fastlane/) | Homebrew Fastlane: `android beta` (Play internal testing), `ios beta` (TestFlight), `beta_both`. Secrets stay in env / local paths — not in git |
-| [`scripts/feed-credibility/`](../scripts/feed-credibility/) | Optional research scripts that sample For You vs Following in a real browser (Playwright). Not part of the shipped apps |
+| [`scripts/feed-credibility/`](../scripts/feed-credibility/) and [`web/feed-compare/`](../web/feed-compare/) | Local comparison of For You vs Following. A Chrome session reads both timelines (the public X API only has reverse-chronological Following). Posts are scored with the Simplifier credibility prompt. `node web/feed-compare/server.cjs` serves the UI on `127.0.0.1`. Not part of the shipped apps |
 | [`scripts/benchmark-filter.cjs`](../scripts/benchmark-filter.cjs) | On-device filter benchmark. The in-app controls are debug-only. See [`docs/performance-benchmark.md`](performance-benchmark.md) |
 
 ### Android native (Jetpack Compose)

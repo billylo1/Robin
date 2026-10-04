@@ -86,10 +86,21 @@ fastlane/                       # Play / TestFlight release lanes
 docs/mobile.md                  # Build & configure Android / iOS
 docs/webview-filter.md          # Injected filter behavior
 docs/ARCHITECTURE.md
-scripts/feed-credibility/       # Optional research tooling (For You vs Following mix)
+scripts/feed-credibility/       # Collect + score For You vs Following
+web/feed-compare/               # Local web UI for that comparison
 LICENSE / CONTRIBUTING.md / SECURITY.md / CODE_OF_CONDUCT.md
 ```
 
+
+## Compare Following and For you
+
+The public X API does not expose For you (its home timeline is reverse-chronological only). This tool reads both timelines from a Chrome window you log into, fact-checks each post with the [Credibility Analyzer](https://github.com/billylo1/Simplifier) prompt (Gemini + Google Search), and counts how many it marks misleading.
+
+```bash
+GEMINI_API_KEY=... node web/feed-compare/server.cjs
+```
+
+Open http://127.0.0.1:8787. The server listens on localhost only. The X login stays in `~/.cache/feed-credibility-profile`, and a pasted Gemini key stays in that process.
 
 ## License
 

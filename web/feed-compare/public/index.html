@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Following vs For you — credibility</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="kicker">Robin · same prompt as Credibility Analyzer</p>
+      <h1>Following vs For you</h1>
+      <p class="lede">Fact-check a sample of each home timeline, then count posts the analyzer marks misleading. A post counts when its verdict is misleading or any claim is marked false or misleading. For you is not in the public X API — that API only has the reverse-chronological Following feed — so both timelines are read from a Chrome window where you are logged into X.</p>
+    </header>
+
+    <section class="panel controls">
+      <label>Posts per feed
+        <input id="per-feed" type="number" min="10" max="100" value="50">
+      </label>
+      <label class="key">Gemini API key
+        <input id="api-key" type="password" autocomplete="off" placeholder="Uses GEMINI_API_KEY if you started the server with one">
+      </label>
+      <div class="buttons">
+        <button id="collect" type="button">Collect feeds</button>
+        <button id="score" type="button">Score posts</button>
+      </div>
+      <p id="status" class="status"></p>
+      <ol class="steps">
+        <li>Collect opens Chrome. Log into X if it asks. The login is stored only in a profile on this computer.</li>
+        <li>Following is switched to Recent, so it is chronological rather than Popular.</li>
+        <li>Score sends each post to Gemini with Google Search, using Simplifier’s fact-check prompt. The key is not written to disk.</li>
+      </ol>
+    </section>
+
+    <section id="results" hidden></section>
+    <section class="panel">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

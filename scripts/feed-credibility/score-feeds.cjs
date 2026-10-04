@@ -18,8 +18,18 @@ const CONCURRENCY = Number(arg('concurrency', 4));
 const FINDING_COUNT = 3;
 const MIN_TEXT_CHARS = 25;
 const MAX_ATTEMPTS = 4;
-const SIMPLIFIER_DIR = path.resolve(process.env.SIMPLIFIER_DIR || path.join(__dirname, '../../../simplifier'));
+function simplifierDir() {
+  if (process.env.SIMPLIFIER_DIR) return path.resolve(process.env.SIMPLIFIER_DIR);
+  const candidates = [
+    path.join(__dirname, '../../../Simplifier'),
+    path.join(__dirname, '../../../simplifier'),
+  ];
+  return candidates.find((dir) => fs.existsSync(path.join(dir, 'extension/browser-utils.js'))) || candidates[0];
+}
+
+const SIMPLIFIER_DIR = simplifierDir();
 const BrowserUtils = require(path.join(SIMPLIFIER_DIR, 'extension/browser-utils.js'));
+const { isMisleading, misleadingCount } = require('./misleading.cjs');
 
 const API_KEY = process.env.GEMINI_API_KEY;
 if (!API_KEY) {
@@ -212,9 +222,32 @@ async function main() {
       .filter((t) => scoreOf(t) && scoreOf(t) <= 3)
       .map((t) => ({ score: scoreOf(t), verdict: cache.get(t.id).verdict, url: t.url, text: t.text.slice(0, 140) }));
   report.low_scoring = { for_you: lowest(fy), following: lowest(fo) };
+  report.misleading = {};
+  for (const [name, list] of Object.entries({
+    for_you: fy,
+    for_you_organic: fy.filter((t) => !t.isAd),
+    following: fo,
+    following_organic: fo.filter((t) => !t.isAd),
+  })) {
+    report.misleading[name] = misleadingCount(list, (id) => cache.get(id));
+  }
+  report.misleading_posts = {
+    for_you: fy.filter((t) => isMisleading(cache.get(t.id))).map((t) => ({
+      score: scoreOf(t),
+      verdict: cache.get(t.id).verdict,
+      url: t.url,
+      text: t.text.slice(0, 140),
+    })),
+    following: fo.filter((t) => isMisleading(cache.get(t.id))).map((t) => ({
+      score: scoreOf(t),
+      verdict: cache.get(t.id).verdict,
+      url: t.url,
+      text: t.text.slice(0, 140),
+    })),
+  };
 
   fs.writeFileSync(path.join(DIR, 'report.json'), JSON.stringify(report, null, 2));
-  console.log(JSON.stringify({ overlap: report.overlap, feeds: report.feeds, comparisons: report.comparisons }, null, 2));
+  console.log(JSON.stringify({ overlap: report.overlap, misleading: report.misleading }, null, 2));
   console.log(`Full report: ${path.join(DIR, 'report.json')}`);
 }
 
