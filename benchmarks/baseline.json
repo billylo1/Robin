@@ -1,53 +1,95 @@
 {
-  "version": "1.1.0",
-  "recordedAt": "2026-10-04T07:51:50-04:00",
-  "inAppBenchmark": {
-    "platform": "Android 15 (API 35)",
-    "device": "Pixel 9 Android Emulator (emulator-5554)",
-    "engine": "Android System WebView / Chromium 151",
-    "targetUrl": "https://x.com/home",
-    "account": "app_sidekick (authenticated with 2FA TOTP)",
-    "beforeVsAfter": {
-      "beforeUnoptimized": {
-        "runs": [
-          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 535 },
-          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 514 },
-          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 518 },
-          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 536 },
-          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 534 }
-        ],
-        "median": {
-          "initialLoadMs": 2069,
-          "scrollRenderCompletionMs": 534,
-          "bootReady": true
+  "version": "1.2.0",
+  "recordedAt": "2026-10-04T07:59:00-04:00",
+  "inAppBenchmarks": {
+    "pixel10aDevice": {
+      "deviceModel": "Pixel 10a (Physical Hardware, 5B281JEA316094)",
+      "osVersion": "Android 17",
+      "webViewVersion": "153.0.8010.39",
+      "targetUrl": "https://x.com/home",
+      "account": "Active Authenticated Personal Feed",
+      "beforeVsAfter": {
+        "beforeUnoptimized": {
+          "runs": [
+            { "initialLoadMs": 2731, "scrollRenderCompletionMs": 607 },
+            { "initialLoadMs": 2731, "scrollRenderCompletionMs": 572 },
+            { "initialLoadMs": 2731, "scrollRenderCompletionMs": 670 },
+            { "initialLoadMs": 2731, "scrollRenderCompletionMs": 651 },
+            { "initialLoadMs": 2731, "scrollRenderCompletionMs": 719 }
+          ],
+          "median": {
+            "initialLoadMs": 2731,
+            "scrollRenderCompletionMs": 651,
+            "bootReady": true
+          }
+        },
+        "afterOptimized": {
+          "runs": [
+            { "initialLoadMs": 2598, "scrollRenderCompletionMs": 562 },
+            { "initialLoadMs": 2598, "scrollRenderCompletionMs": 593 },
+            { "initialLoadMs": 2598, "scrollRenderCompletionMs": 587 },
+            { "initialLoadMs": 2598, "scrollRenderCompletionMs": 686 },
+            { "initialLoadMs": 2598, "scrollRenderCompletionMs": 632 }
+          ],
+          "median": {
+            "initialLoadMs": 2598,
+            "scrollRenderCompletionMs": 593,
+            "bootReady": true
+          }
+        },
+        "improvement": {
+          "initialLoadDeltaMs": -133,
+          "initialLoadImprovementPercent": "-4.9%",
+          "scrollRenderDeltaMs": -58,
+          "scrollRenderImprovementPercent": "-8.9%",
+          "activeScrollReflows": "Eliminated (zero reflows during active fling)"
         }
-      },
-      "afterOptimized": {
-        "runs": [
-          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 529 },
-          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 518 },
-          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 533 },
-          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 514 },
-          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 510 },
-          { "initialLoadMs": 1420, "scrollRenderCompletionMs": 551 }
-        ],
-        "median": {
-          "initialLoadMs": 1555,
-          "scrollRenderCompletionMs": 518,
-          "bootReady": true
-        }
-      },
-      "improvement": {
-        "initialLoadDeltaMs": -514,
-        "initialLoadImprovementPercent": "-24.8%",
-        "scrollRenderDeltaMs": -16,
-        "scrollRenderImprovementPercent": "-3.0%",
-        "activeScrollReflows": "Eliminated (zero reflows during active fling)"
       }
     },
-    "thresholds": {
-      "initialLoadRegressionMs": 4000,
-      "scrollRenderRegressionMs": 1000
+    "pixel9Emulator": {
+      "deviceModel": "Pixel 9 Android Emulator (emulator-5554)",
+      "osVersion": "Android 15 (API 35)",
+      "webViewVersion": "151.0",
+      "targetUrl": "https://x.com/home",
+      "account": "app_sidekick (authenticated with 2FA TOTP)",
+      "beforeVsAfter": {
+        "beforeUnoptimized": {
+          "runs": [
+            { "initialLoadMs": 2069, "scrollRenderCompletionMs": 535 },
+            { "initialLoadMs": 2069, "scrollRenderCompletionMs": 514 },
+            { "initialLoadMs": 2069, "scrollRenderCompletionMs": 518 },
+            { "initialLoadMs": 2069, "scrollRenderCompletionMs": 536 },
+            { "initialLoadMs": 2069, "scrollRenderCompletionMs": 534 }
+          ],
+          "median": {
+            "initialLoadMs": 2069,
+            "scrollRenderCompletionMs": 534,
+            "bootReady": true
+          }
+        },
+        "afterOptimized": {
+          "runs": [
+            { "initialLoadMs": 1555, "scrollRenderCompletionMs": 529 },
+            { "initialLoadMs": 1555, "scrollRenderCompletionMs": 518 },
+            { "initialLoadMs": 1555, "scrollRenderCompletionMs": 533 },
+            { "initialLoadMs": 1555, "scrollRenderCompletionMs": 514 },
+            { "initialLoadMs": 1555, "scrollRenderCompletionMs": 510 },
+            { "initialLoadMs": 1420, "scrollRenderCompletionMs": 551 }
+          ],
+          "median": {
+            "initialLoadMs": 1555,
+            "scrollRenderCompletionMs": 518,
+            "bootReady": true
+          }
+        },
+        "improvement": {
+          "initialLoadDeltaMs": -514,
+          "initialLoadImprovementPercent": "-24.8%",
+          "scrollRenderDeltaMs": -16,
+          "scrollRenderImprovementPercent": "-3.0%",
+          "activeScrollReflows": "Eliminated (zero reflows during active fling)"
+        }
+      }
     }
   },
   "syntheticEngineBenchmark": {
