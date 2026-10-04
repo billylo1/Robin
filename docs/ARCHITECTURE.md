@@ -30,6 +30,7 @@ flowchart LR
 | [`ios/`](../ios/) | SwiftUI (iOS 18+): `XWebFeedView` WKWebView + `Resources/x-filter` inject (parity with Android). Settings for text size, filter toggles, and X sign-out (`WKWebsiteDataStore`). Optional Sentry / Aptabase via gitignored `Config.xcconfig`. See [`docs/webview-filter.md`](webview-filter.md) |
 | [`fastlane/`](../fastlane/) | Homebrew Fastlane: `android beta` (Play internal testing), `ios beta` (TestFlight), `beta_both`. Secrets stay in env / local paths — not in git |
 | [`scripts/feed-credibility/`](../scripts/feed-credibility/) | Optional research scripts that sample For You vs Following in a real browser (Playwright). Not part of the shipped apps |
+| [`scripts/benchmark-filter.cjs`](../scripts/benchmark-filter.cjs) | On-device filter benchmark. The in-app controls are debug-only. See [`docs/performance-benchmark.md`](performance-benchmark.md) |
 
 ### Android native (Jetpack Compose)
 
