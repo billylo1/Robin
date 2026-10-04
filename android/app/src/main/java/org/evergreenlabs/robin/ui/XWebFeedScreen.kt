@@ -20,6 +20,7 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebStorage
@@ -195,13 +196,76 @@ private class InteractBridge(private val onInteract: () -> Unit) {
     }
 }
 
-/** Called from filter-core when the boot gate lifts (`RobinBoot.ready()`). */
-private class BootBridge(private val onReady: () -> Unit) {
+/** Called from filter-core when the boot gate lifts (`RobinBoot.ready(nonce)`) or the welcome empty state sticks (`RobinBoot.retry(nonce)`). */
+private class BootBridge(
+    private val onReady: (String) -> Unit,
+    private val onRetry: (String) -> Unit,
+) {
     private val main = Handler(Looper.getMainLooper())
 
     @JavascriptInterface
-    fun ready() {
-        main.post { onReady() }
+    fun ready(nonce: String) {
+        main.post { onReady(nonce) }
+    }
+
+    @JavascriptInterface
+    fun retry(nonce: String) {
+        main.post { onRetry(nonce) }
+    }
+}
+
+/**
+ * After a welcome-state reload, ignore `ready` from the document we left.
+ * Filter-core stamps each document with `window.__ROBIN_BOOT_NONCE__`.
+ */
+private class BootNonceGate {
+    var rejectUntilFresh: Boolean = false
+    var liveNonce: String = ""
+    var pendingNonce: String? = null
+    var fetchGen: Int = 0
+
+    /** @return false when [nonce] belongs to a document we already left. */
+    fun onRetry(nonce: String): Boolean {
+        if (rejectUntilFresh && liveNonce.isNotEmpty() && nonce != liveNonce) return false
+        fetchGen++
+        rejectUntilFresh = true
+        liveNonce = ""
+        pendingNonce = null
+        return true
+    }
+
+    /** @return true when this boot should reveal the feed now. */
+    fun onBoot(nonce: String): Boolean {
+        if (!rejectUntilFresh) return true
+        if (liveNonce.isNotEmpty() && nonce == liveNonce) {
+            rejectUntilFresh = false
+            pendingNonce = null
+            return true
+        }
+        // Only stash while the new document's nonce is unknown.
+        // A late message from the welcome page must not replace it.
+        if (liveNonce.isEmpty() && nonce.isNotEmpty()) pendingNonce = nonce
+        return false
+    }
+
+    /**
+     * @return true when a boot message arrived before we learned [nonce] and it matches.
+     */
+    fun onDocumentNonce(gen: Int, nonce: String): Boolean {
+        if (gen != fetchGen || nonce.isEmpty()) return false
+        liveNonce = nonce
+        if (rejectUntilFresh && pendingNonce == nonce) {
+            pendingNonce = null
+            rejectUntilFresh = false
+            return true
+        }
+        return false
+    }
+
+    fun noteNavigationFinished(): Int = fetchGen
+
+    fun clearReject() {
+        rejectUntilFresh = false
     }
 }
 
@@ -533,6 +597,13 @@ fun XWebFeedScreen(
     var filterSettingsWhenInfoOpened by remember { mutableStateOf<FilterSettings?>(null) }
     /** True after Settings changed Following / ordering / feed filters until home reloads. */
     var pendingFeedSettingsReload by remember { mutableStateOf(false) }
+    /** One automatic /home reload per refresh when X paints the welcome empty state. */
+    var welcomeAutoRetryUsed by remember { mutableStateOf(false) }
+    /** Bumped to restart the boot-cover timeout without toggling visibility. */
+    var coverDeadline by remember { mutableIntStateOf(0) }
+    val welcomeRetryHolder = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val revealBootHolder = remember { mutableStateOf<(() -> Unit)?>(null) }
+    val bootNonceGate = remember { BootNonceGate() }
 
     val showBackButton = canGoBack && !isFeedHome(pageUrl)
 
@@ -583,6 +654,7 @@ fun XWebFeedScreen(
     fun hardReloadFeed(warm: Boolean, markRefresh: Boolean = true) {
         val wv = webViewRef ?: return
         if (markRefresh) lastFeedRefreshAtMs = System.currentTimeMillis()
+        welcomeAutoRetryUsed = false
         warmReloadJob?.cancel()
         warmReloadJob = null
 
@@ -616,6 +688,42 @@ fun XWebFeedScreen(
             warmSnapshot = null
             doLoad()
         }
+    }
+
+    /**
+     * Cache-bypassing /home sometimes commits X's "Welcome to X!" empty state.
+     * Load once more under the cover or warm snapshot already up — a new
+     * snapshot would freeze the welcome screen.
+     */
+    fun retryWelcomeLoad() {
+        if (welcomeAutoRetryUsed) return
+        val wv = webViewRef ?: return
+        welcomeAutoRetryUsed = true
+        Log.i(TAG, "welcome interstitial — reloading home once")
+        warmReloadJob?.cancel()
+        warmReloadJob = null
+        if (warmSnapshot != null) {
+            suppressNextHomeBootCoverState.value = true
+            warmReloadJob = scope.launch {
+                delay(5_500)
+                if (warmSnapshot != null) {
+                    suppressNextHomeBootCoverState.value = false
+                    warmSnapshotAlpha.animateTo(
+                        0f,
+                        tween(WARM_CROSSFADE_MS, easing = LinearOutSlowInEasing),
+                    )
+                    warmSnapshot = null
+                }
+            }
+        } else {
+            suppressNextHomeBootCoverState.value = false
+            if (!showBootCover) showBootCover = true
+            coverDeadline++
+        }
+        val previous = wv.settings.cacheMode
+        wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        wv.loadUrl(X_HOME)
+        wv.post { wv.settings.cacheMode = previous }
     }
 
     fun flushPendingFeedSettingsReloadIfNeeded() {
@@ -708,7 +816,8 @@ fun XWebFeedScreen(
     }
 
     // Slightly longer than filter-core's 5s hard reveal.
-    LaunchedEffect(showBootCover) {
+    // coverDeadline restarts the wait when a welcome-state retry keeps the cover up.
+    LaunchedEffect(showBootCover, coverDeadline) {
         if (!showBootCover) return@LaunchedEffect
         delay(5_500)
         if (showBootCover) showBootCover = false
@@ -770,6 +879,23 @@ fun XWebFeedScreen(
             requestNearTopAutoRefresh()
         }
     }
+
+    fun revealBoot() {
+        showBootCover = false
+        suppressNextHomeBootCoverState.value = false
+        if (warmSnapshot != null) {
+            warmReloadJob?.cancel()
+            warmReloadJob = scope.launch {
+                warmSnapshotAlpha.animateTo(
+                    0f,
+                    tween(WARM_CROSSFADE_MS, easing = LinearOutSlowInEasing),
+                )
+                warmSnapshot = null
+            }
+        }
+    }
+    welcomeRetryHolder.value = { retryWelcomeLoad() }
+    revealBootHolder.value = { revealBoot() }
 
     BackHandler(enabled = canGoBack) {
         webViewRef?.goBack()
@@ -910,23 +1036,14 @@ fun XWebFeedScreen(
                         false
                     }
                     addJavascriptInterface(
-                        BootBridge {
-                            showBootCoverState.value = false
-                            suppressNextHomeBootCoverState.value = false
-                            if (warmSnapshot != null) {
-                                warmReloadJob?.cancel()
-                                warmReloadJob = scope.launch {
-                                    warmSnapshotAlpha.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(
-                                            durationMillis = WARM_CROSSFADE_MS,
-                                            easing = LinearOutSlowInEasing,
-                                        ),
-                                    )
-                                    warmSnapshot = null
-                                }
-                            }
-                        },
+                        BootBridge(
+                            onReady = { nonce ->
+                                if (bootNonceGate.onBoot(nonce)) revealBootHolder.value?.invoke()
+                            },
+                            onRetry = { nonce ->
+                                if (bootNonceGate.onRetry(nonce)) welcomeRetryHolder.value?.invoke()
+                            },
+                        ),
                         "RobinBoot",
                     )
                     addJavascriptInterface(
@@ -1232,9 +1349,24 @@ fun XWebFeedScreen(
                             }
                         }
 
+                        override fun onReceivedError(
+                            view: WebView?,
+                            request: WebResourceRequest?,
+                            error: WebResourceError?,
+                        ) {
+                            if (request?.isForMainFrame == true) bootNonceGate.clearReject()
+                        }
+
                         override fun onPageFinished(view: WebView?, url: String?) {
                             pageUrl = url
                             view?.let {
+                                val nonceGen = bootNonceGate.noteNavigationFinished()
+                                it.evaluateJavascript("window.__ROBIN_BOOT_NONCE__||''") { raw ->
+                                    val nonce = raw?.trim()?.removeSurrounding("\"") ?: ""
+                                    if (bootNonceGate.onDocumentNonce(nonceGen, nonce)) {
+                                        revealBootHolder.value?.invoke()
+                                    }
+                                }
                                 it.evaluateJavascript(SCROLL_PROBE_JS, null)
                                 if (isXHost(url)) {
                                     XFilterInjector.evaluateIfNeeded(it)

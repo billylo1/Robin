@@ -36,6 +36,8 @@ While filter-core settles the chosen home tab (Following or For You) / Latest / 
 
 iOS arms the cover from the **pending main-frame URL** (captured in `decidePolicyFor`) as well as `webView.url`, because during back-to-home provisional navigation `webView.url` can still be the status page.
 
+A cache-bypassing `/home` load sometimes commits X’s logged-in empty state (“Welcome to X!” / “Let’s go!”) instead of the timeline; the next full load returns the feed. Filter-core waits until the first home-timeline **response** arrives before clicking Following or Recent, so a tab click cannot abort that response into the empty state. The welcome interstitial is not treated as a settled feed. If that copy is still up after ~1.5s with no posts, filter-core asks the host once (`mtRetry` / `RobinBoot.retry()`) to load `/home` again under the boot cover or warm snapshot already showing. A second welcome in a row is left up when the cover times out.
+
 ### Near-top auto-refresh (newer posts)
 
 X’s mobile web does not reliably surface newer posts while Robin sits at the top of Following. Hosts auto-refresh when:

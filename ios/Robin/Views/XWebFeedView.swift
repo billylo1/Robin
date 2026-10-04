@@ -150,6 +150,8 @@ struct XWebFeedView: View {
     @State private var filterSettingsWhenInfoOpened: FilterSettings?
     /// True after Settings changed Following / ordering / feed filters until home reloads.
     @State private var pendingFeedSettingsReload = false
+    /// One automatic /home reload per refresh when X paints the welcome empty state.
+    @State private var welcomeAutoRetryUsed = false
 
     private static let scrollTopThreshold: CGFloat = 400
     private static let nearTopThreshold: CGFloat = 80
@@ -244,7 +246,8 @@ struct XWebFeedView: View {
                     settings: filterStore.settings,
                     fontScale: fontScale.scale,
                     onScroll: handleScroll,
-                    onInteract: noteUserInteraction
+                    onInteract: noteUserInteraction,
+                    onWelcomeRetry: retryWelcomeLoad
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -337,24 +340,16 @@ struct XWebFeedView: View {
             }
         }
         .onChange(of: showBootCover) { _, show in
-            bootCoverTimeoutTask?.cancel()
             if !show {
+                bootCoverTimeoutTask?.cancel()
                 flushPendingFeedSettingsReloadIfNeeded()
             }
             guard show else { return }
-            bootCoverTimeoutTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
-                guard !Task.isCancelled else { return }
-                if showBootCover { showBootCover = false }
-            }
+            armBootCoverTimeout()
         }
         .onAppear {
             if showBootCover {
-                bootCoverTimeoutTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
-                    guard !Task.isCancelled else { return }
-                    if showBootCover { showBootCover = false }
-                }
+                armBootCoverTimeout()
             }
             startNearTopPollIfNeeded()
         }
@@ -534,9 +529,55 @@ struct XWebFeedView: View {
         suppressNextHomeBootCover = false
     }
 
+    /// If a cache-bypassing /home load committed X's "Welcome to X!" empty
+    /// state, load once more under the cover or warm snapshot already up.
+    /// A new snapshot here would freeze the welcome screen.
+    private func retryWelcomeLoad() {
+        guard !welcomeAutoRetryUsed, let webView else { return }
+        welcomeAutoRetryUsed = true
+        NSLog("XWebFeed: welcome interstitial — reloading home once")
+        cancelWarmReloadTask()
+        let request = URLRequest(
+            url: xHomeURL,
+            cachePolicy: .reloadIgnoringLocalCacheData,
+            timeoutInterval: 60
+        )
+        if warmSnapshot != nil {
+            suppressNextHomeBootCover = true
+            armWarmSnapshotFallback()
+        } else {
+            suppressNextHomeBootCover = false
+            if !showBootCover { showBootCover = true }
+            armBootCoverTimeout()
+        }
+        webView.load(request)
+    }
+
+    private func armBootCoverTimeout() {
+        bootCoverTimeoutTask?.cancel()
+        bootCoverTimeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
+            guard !Task.isCancelled else { return }
+            if showBootCover { showBootCover = false }
+        }
+    }
+
+    private func armWarmSnapshotFallback() {
+        warmReloadTask?.cancel()
+        warmReloadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
+            guard !Task.isCancelled, warmSnapshot != nil else { return }
+            suppressNextHomeBootCover = false
+            withAnimation(.easeOut(duration: Self.warmCrossfadeSeconds)) {
+                warmSnapshot = nil
+            }
+        }
+    }
+
     private func hardReloadFeed(warm: Bool, markRefresh: Bool = true) {
         guard let webView else { return }
         if markRefresh { lastFeedRefreshAt = Date() }
+        welcomeAutoRetryUsed = false
         cancelWarmReloadTask()
 
         let request = URLRequest(
@@ -627,6 +668,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
     var fontScale: Double
     var onScroll: (CGFloat) -> Void
     var onInteract: () -> Void
+    var onWelcomeRetry: () -> Void
 
     func makeCoordinator() -> XWebViewCoordinator {
         XWebViewCoordinator(
@@ -639,7 +681,8 @@ private struct XWebViewRepresentable: UIViewRepresentable {
             settings: settings,
             fontScale: fontScale,
             onScroll: onScroll,
-            onInteract: onInteract
+            onInteract: onInteract,
+            onWelcomeRetry: onWelcomeRetry
         )
     }
 
@@ -663,6 +706,10 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         config.userContentController.add(
             context.coordinator,
             name: "mtBoot"
+        )
+        config.userContentController.add(
+            context.coordinator,
+            name: "mtRetry"
         )
         config.userContentController.add(
             context.coordinator,
@@ -692,6 +739,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         context.coordinator.liveFontScale = fontScale
         context.coordinator.onScroll = onScroll
         context.coordinator.onInteract = onInteract
+        context.coordinator.onWelcomeRetry = onWelcomeRetry
 
         DispatchQueue.main.async {
             webView = wv
@@ -705,6 +753,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         context.coordinator.liveFontScale = fontScale
         context.coordinator.onScroll = onScroll
         context.coordinator.onInteract = onInteract
+        context.coordinator.onWelcomeRetry = onWelcomeRetry
         // Settings / font scale are applied via onChange in XWebFeedView — avoid
         // re-toggling zoom/classes on every SwiftUI pass (causes paint churn).
     }
@@ -713,6 +762,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         let ucc = uiView.configuration.userContentController
         ucc.removeScriptMessageHandler(forName: "mtScroll")
         ucc.removeScriptMessageHandler(forName: "mtBoot")
+        ucc.removeScriptMessageHandler(forName: "mtRetry")
         ucc.removeScriptMessageHandler(forName: "mtInteract")
     }
 }
@@ -729,6 +779,13 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     var liveFontScale: Double
     var onScroll: (CGFloat) -> Void
     var onInteract: () -> Void
+    var onWelcomeRetry: () -> Void
+
+    /// After a welcome-state reload, ignore mtBoot from the document we left.
+    private var rejectBootUntilFreshNonce = false
+    private var liveBootNonce = ""
+    private var pendingBootNonce: String?
+    private var nonceFetchGen = 0
 
     private var progressObservation: NSKeyValueObservation?
     private var backObservation: NSKeyValueObservation?
@@ -754,7 +811,8 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         settings: FilterSettings,
         fontScale: Double,
         onScroll: @escaping (CGFloat) -> Void,
-        onInteract: @escaping () -> Void
+        onInteract: @escaping () -> Void,
+        onWelcomeRetry: @escaping () -> Void
     ) {
         _canGoBack = canGoBack
         _pageURL = pageURL
@@ -766,20 +824,43 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         liveFontScale = fontScale
         self.onScroll = onScroll
         self.onInteract = onInteract
+        self.onWelcomeRetry = onWelcomeRetry
     }
 
     func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        if (message.name == "mtBoot") {
-            showBootCover = false
-            suppressNextHomeBootCover = false
-            if warmSnapshot != nil {
-                withAnimation(.easeOut(duration: XWebFeedView.warmCrossfadeSeconds)) {
-                    warmSnapshot = nil
+        if message.name == "mtBoot" {
+            let nonce = message.body as? String ?? ""
+            if rejectBootUntilFreshNonce {
+                if !liveBootNonce.isEmpty, nonce == liveBootNonce {
+                    rejectBootUntilFreshNonce = false
+                    pendingBootNonce = nil
+                    revealBootCover()
+                    return
                 }
+                // Only stash while the new document's nonce is unknown.
+                // A late message from the welcome page must not replace it.
+                if liveBootNonce.isEmpty, !nonce.isEmpty {
+                    pendingBootNonce = nonce
+                }
+                return
             }
+            revealBootCover()
+            return
+        }
+        if message.name == "mtRetry" {
+            let nonce = message.body as? String ?? ""
+            if rejectBootUntilFreshNonce, !liveBootNonce.isEmpty, nonce != liveBootNonce {
+                return
+            }
+            // Drop in-flight nonce reads from the welcome document.
+            nonceFetchGen += 1
+            rejectBootUntilFreshNonce = true
+            liveBootNonce = ""
+            pendingBootNonce = nil
+            onWelcomeRetry()
             return
         }
         if message.name == "mtInteract" {
@@ -798,6 +879,38 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             return
         }
         onScroll(y)
+    }
+
+    private func revealBootCover() {
+        showBootCover = false
+        suppressNextHomeBootCover = false
+        if warmSnapshot != nil {
+            withAnimation(.easeOut(duration: XWebFeedView.warmCrossfadeSeconds)) {
+                warmSnapshot = nil
+            }
+        }
+    }
+
+    /// Learn the new document's boot nonce so a late mtBoot from the welcome page cannot drop the cover.
+    private func noteBootNonce(on webView: WKWebView) {
+        guard webView !== authPopupWebView else { return }
+        // Do not bump the generation here. Subframe didFinish also calls this,
+        // and the script runs in the main frame. Only a welcome retry invalidates
+        // an in-flight read (it bumps nonceFetchGen before loading).
+        let gen = nonceFetchGen
+        webView.evaluateJavaScript("window.__ROBIN_BOOT_NONCE__ || ''") { [weak self] result, _ in
+            Task { @MainActor in
+                guard let self, gen == self.nonceFetchGen else { return }
+                let nonce = result as? String ?? ""
+                guard !nonce.isEmpty else { return }
+                self.liveBootNonce = nonce
+                if self.rejectBootUntilFreshNonce, self.pendingBootNonce == nonce {
+                    self.pendingBootNonce = nil
+                    self.rejectBootUntilFreshNonce = false
+                    self.revealBootCover()
+                }
+            }
+        }
     }
 
     func observe(_ webView: WKWebView) {
@@ -894,6 +1007,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         syncNavigationState(webView)
         if webView !== authPopupWebView {
             progress = 1
+            noteBootNonce(on: webView)
             webView.evaluateJavaScript(XWebFeedView.scrollProbeJS, completionHandler: nil)
             scheduleLayoutDiagnostics(on: webView)
         }

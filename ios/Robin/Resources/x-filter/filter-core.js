@@ -27,11 +27,15 @@
   // Whether the home feed X last requested is ranked. Following → Popular and
   // Following → Recent both call HomeLatestTimeline; only the enableRanking
   // variable tells them apart. HomeTimeline (For you) is always ranked.
-  // null until the first home feed request. Ground truth for preferLatest.
+  // null until the first home feed response. Ground truth for preferLatest.
   window.__ROBIN_HOME_OP__ = window.__ROBIN_HOME_OP__ || "";
   if (window.__ROBIN_HOME_RANKED__ === undefined) {
     window.__ROBIN_HOME_RANKED__ = null;
   }
+  // Set when a home-timeline response arrives, not when the request is sent.
+  // Tab / sort clicks before that abort the in-flight fetch and X can commit
+  // the "Welcome to X!" empty state until the next full document load.
+  var homeResponseSeen = false;
   var HOME_OP_RE = /\/graphql\/[^/]+\/(HomeLatestTimeline|HomeTimeline)\b/;
   function homeOpOf(url) {
     var m = HOME_OP_RE.exec(String(url || ""));
@@ -103,6 +107,8 @@
       if (op) {
         var xhr = this;
         xhr.addEventListener("load", function () {
+          noteHomeRequest(xhr.__mtHomeOp, xhr.__mtHomeUrl, xhr.__mtHomeBody);
+          homeResponseSeen = true;
           if (typeof xhr.responseText === "string") collectRepostTimes(xhr.responseText);
         });
       }
@@ -110,7 +116,7 @@
     };
     var origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function (body) {
-      if (this.__mtHomeOp) noteHomeRequest(this.__mtHomeOp, this.__mtHomeUrl, body);
+      if (this.__mtHomeOp) this.__mtHomeBody = body;
       return origSend.apply(this, arguments);
     };
     var origFetch = window.fetch;
@@ -120,8 +126,10 @@
         var url = typeof input === "string" ? input : input && input.url;
         var op = homeOpOf(url);
         if (op) {
-          noteHomeRequest(op, url, init && init.body);
+          var body = init && init.body;
           p.then(function (res) {
+            noteHomeRequest(op, url, body);
+            homeResponseSeen = true;
             return res.clone().text().then(collectRepostTimes);
           }).catch(function () {});
         }
@@ -335,6 +343,8 @@
   function forceFollowing() {
     // Port of changeFollowingTimeline (minimal-twitter).
     var settings = currentSettings();
+    if (!homeResponseSeen) return;
+    if (isWelcomeInterstitial()) return;
     if (!settings.forceFollowing || !isHomePath()) return;
     var now = Date.now();
     if (now - lastFollowClick < 1500) return;
@@ -357,6 +367,8 @@
 
   function forceForYou() {
     var settings = currentSettings();
+    if (!homeResponseSeen) return;
+    if (isWelcomeInterstitial()) return;
     if (settings.forceFollowing || !isHomePath()) return;
     var now = Date.now();
     if (now - lastFollowClick < 1500) return;
@@ -478,6 +490,8 @@
   function preferLatest() {
     // Port of changeLatestTweets, gated on whether the requested feed is ranked.
     var settings = currentSettings();
+    if (!homeResponseSeen) return;
+    if (isWelcomeInterstitial()) return;
     if (!settings.preferLatest || !isHomePath()) return;
     // Reverse-chron sort only applies to Following, not For You.
     if (!settings.forceFollowing) {
@@ -1294,6 +1308,8 @@
   var bootLatestOkAt = 0;
   var bootReadyAt = 0;
   var bootRevealed = false;
+  var bootNonce = String(Date.now()) + Math.random().toString(36).slice(2);
+  window.__ROBIN_BOOT_NONCE__ = bootNonce;
   var BOOT_HARD_MS = 5000;
   var BOOT_AFTER_LATEST_MS = 1200;
   var BOOT_FOLLOWING_SETTLE_MS = 800;
@@ -1311,12 +1327,29 @@
         window.webkit.messageHandlers &&
         window.webkit.messageHandlers.mtBoot
       ) {
-        window.webkit.messageHandlers.mtBoot.postMessage("ready");
+        window.webkit.messageHandlers.mtBoot.postMessage(bootNonce);
       }
     } catch (e) {}
     try {
       if (window.RobinBoot && window.RobinBoot.ready) {
-        window.RobinBoot.ready();
+        window.RobinBoot.ready(bootNonce);
+      }
+    } catch (e2) {}
+  }
+
+  function notifyWelcomeRetry() {
+    try {
+      if (
+        window.webkit &&
+        window.webkit.messageHandlers &&
+        window.webkit.messageHandlers.mtRetry
+      ) {
+        window.webkit.messageHandlers.mtRetry.postMessage(bootNonce);
+      }
+    } catch (e) {}
+    try {
+      if (window.RobinBoot && window.RobinBoot.retry) {
+        window.RobinBoot.retry(bootNonce);
       }
     } catch (e2) {}
   }
@@ -1348,12 +1381,60 @@
     );
   }
 
-  function hasFeedContent() {
-    return !!(
-      document.querySelector('article[data-testid="tweet"]') ||
-      document.querySelector('[data-testid="emptyState"]') ||
-      document.querySelector('[data-testid="error-detail"]')
+  /**
+   * Logged-in empty home X paints after some cache-bypassing /home loads:
+   * "Welcome to X!" / "Let's go!". A second document load returns the timeline.
+   * Other empty states (protected account, errors) are not this interstitial.
+   */
+  function isWelcomeInterstitial() {
+    if (!isHomePath()) return false;
+    if (document.querySelector('article[data-testid="tweet"]')) return false;
+    var nodes = document.querySelectorAll(
+      '[data-testid="emptyState"], [data-testid="empty_state_header_text"], [data-testid="empty_state_body_text"]'
     );
+    for (var i = 0; i < nodes.length; i++) {
+      var t = (nodes[i].textContent || "").replace(/\s+/g, " ").toLowerCase();
+      if (t.indexOf("welcome to x") !== -1 || t.indexOf("welcome to twitter") !== -1) {
+        return true;
+      }
+      if (t.indexOf("people and topics to follow") !== -1) return true;
+    }
+    var heads = document.querySelectorAll("h1, h2, [role='heading']");
+    for (var h = 0; h < heads.length && h < 8; h++) {
+      var ht = (heads[h].textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+      if (
+        ht === "welcome to x!" ||
+        ht === "welcome to x" ||
+        ht === "welcome to twitter!" ||
+        ht === "welcome to twitter"
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  var welcomeSeenAt = 0;
+  var welcomeRetrySent = false;
+  var WELCOME_RETRY_AFTER_MS = 1500;
+
+  function maybeRetryWelcome() {
+    if (welcomeRetrySent || !isHomePath()) return;
+    if (!isWelcomeInterstitial()) {
+      welcomeSeenAt = 0;
+      return;
+    }
+    if (!welcomeSeenAt) welcomeSeenAt = Date.now();
+    if (Date.now() - welcomeSeenAt < WELCOME_RETRY_AFTER_MS) return;
+    welcomeRetrySent = true;
+    notifyWelcomeRetry();
+  }
+
+  function hasFeedContent() {
+    if (document.querySelector('article[data-testid="tweet"]')) return true;
+    if (document.querySelector('[data-testid="error-detail"]')) return true;
+    if (isWelcomeInterstitial()) return false;
+    return !!document.querySelector('[data-testid="emptyState"]');
   }
 
   function isHomeTabSettled() {
@@ -1373,7 +1454,10 @@
 
   function isBootReady() {
     var elapsed = Date.now() - bootStart;
+    // Hard timeout still reveals a real empty account. A welcome retry's
+    // stale mtBoot is ignored by the host via bootNonce.
     if (elapsed >= BOOT_HARD_MS) return true;
+    if (welcomeRetrySent || isWelcomeInterstitial()) return false;
     if (!isHomePath()) return true;
     if (hasLoginCta()) return true;
 
@@ -1500,6 +1584,7 @@
     }
 
     autoClickNewPostsPill();
+    maybeRetryWelcome();
     maybeRevealBoot();
   }
 

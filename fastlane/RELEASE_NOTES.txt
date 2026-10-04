@@ -1,3 +1,4 @@
+A refresh no longer gets stuck on the “Welcome to X!” screen.
 Scrolling the home feed stays smoother, including further down the timeline.
 Returning from a post leaves you where you were.
 Fixed the home feed stalling when scrolling further down the timeline.
