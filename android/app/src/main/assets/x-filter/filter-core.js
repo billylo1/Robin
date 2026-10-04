@@ -28,8 +28,10 @@
   // Following → Recent both call HomeLatestTimeline; only the enableRanking
   // variable tells them apart. HomeTimeline (For you) is always ranked.
   // null until the first home feed request. Ground truth for preferLatest.
-  window.__ROBIN_HOME_OP__ = "";
-  window.__ROBIN_HOME_RANKED__ = null;
+  window.__ROBIN_HOME_OP__ = window.__ROBIN_HOME_OP__ || "";
+  if (window.__ROBIN_HOME_RANKED__ === undefined) {
+    window.__ROBIN_HOME_RANKED__ = null;
+  }
   var HOME_OP_RE = /\/graphql\/[^/]+\/(HomeLatestTimeline|HomeTimeline)\b/;
   function homeOpOf(url) {
     var m = HOME_OP_RE.exec(String(url || ""));
@@ -56,6 +58,7 @@
   // Original post id -> repost time (ms). The DOM only shows the original
   // post's age on reposts; the feed response carries when it was reposted.
   var repostTimes = {};
+  var hasRepostTimes = false;
   function unwrapTweet(r) {
     return r && r.tweet ? r.tweet : r;
   }
@@ -69,7 +72,10 @@
     );
     if (!rt || !rt.rest_id || !lg.created_at) return;
     var t = Date.parse(lg.created_at);
-    if (!isNaN(t) && !(repostTimes[rt.rest_id] > t)) repostTimes[rt.rest_id] = t;
+    if (!isNaN(t) && !(repostTimes[rt.rest_id] > t)) {
+      repostTimes[rt.rest_id] = t;
+      hasRepostTimes = true;
+    }
   }
   function collectRepostTimes(text) {
     try {
@@ -137,8 +143,16 @@
     fontScale: 1,
   };
 
+  var lastRawSettings = null;
+  var cachedSettings = Object.assign({}, defaults);
+
   function currentSettings() {
-    return Object.assign({}, defaults, window.__ROBIN_SETTINGS__ || {});
+    var raw = window.__ROBIN_SETTINGS__;
+    if (raw !== lastRawSettings) {
+      lastRawSettings = raw;
+      cachedSettings = Object.assign({}, defaults, raw || {});
+    }
+    return cachedSettings;
   }
 
   function isHomePath() {
@@ -242,12 +256,23 @@
 
   function tabNodeLabel(t) {
     var label = tabLabel(t);
-    var shortTxt = (t.innerText || "").replace(/\s+/g, " ").trim().toLowerCase();
+    var shortTxt = (t.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
     if (shortTxt && shortTxt.length <= 20) label = shortTxt;
     return label;
   }
 
+  var cachedHomeTabs = { following: null, forYou: null };
+
   function findHomeTabs() {
+    if (
+      cachedHomeTabs.following &&
+      cachedHomeTabs.following.isConnected &&
+      cachedHomeTabs.forYou &&
+      cachedHomeTabs.forYou.isConnected
+    ) {
+      return cachedHomeTabs;
+    }
+
     var following = null;
     var forYou = null;
     // Prefer label match — presentation order is only safe on verified mobile tabs.
@@ -257,13 +282,22 @@
     );
     for (var i = 0; i < nodes.length; i++) {
       var t = nodes[i];
+      var label = tabNodeLabel(t);
+      var matchFollow = !following && isFollowingLabel(label);
+      var matchForYou = !forYou && isForYouLabel(label);
+      if (!matchFollow && !matchForYou) continue;
+
       var r = t.getBoundingClientRect();
       if (r.top > 280 || r.height === 0) continue;
-      var label = tabNodeLabel(t);
-      if (!following && isFollowingLabel(label)) following = t;
-      if (!forYou && isForYouLabel(label)) forYou = t;
+      if (matchFollow) following = t;
+      if (matchForYou) forYou = t;
+      if (following && forYou) break;
     }
-    if (following && forYou) return { following: following, forYou: forYou };
+    if (following && forYou) {
+      cachedHomeTabs.following = following;
+      cachedHomeTabs.forYou = forYou;
+      return cachedHomeTabs;
+    }
 
     // Mobile ScrollSnap heuristic only when both labels verify as home tabs.
     var tablist = getTimelineTablist();
@@ -285,7 +319,9 @@
         }
       }
     }
-    return { following: following, forYou: forYou };
+    cachedHomeTabs.following = following;
+    cachedHomeTabs.forYou = forYou;
+    return cachedHomeTabs;
   }
 
   function isTabSelected(el) {
@@ -393,7 +429,7 @@
       var t = textOf(n);
       if (!t || t.length > 48) continue;
       // Prefer leaf rows whose visible text is exactly the label (not "Sort by Popular Recent").
-      var leaf = (n.innerText || "").replace(/\s+/g, " ").trim().toLowerCase();
+      var leaf = (n.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
       for (var j = 0; j < names.length; j++) {
         if (leaf === names[j]) {
           exact =
@@ -521,7 +557,7 @@
   }
 
   function labelRepostTimes(root) {
-    if (!currentSettings().preferLatest || !isHomePath()) return;
+    if (!currentSettings().preferLatest || !isHomePath() || !hasRepostTimes) return;
     var scope = root && root.querySelectorAll ? root : document;
     var ctxs;
     if (
@@ -579,6 +615,20 @@
   function hideWhoToFollowBlocks(root) {
     if (!currentSettings().hideWhoToFollow) return;
     var scope = root && root.querySelectorAll ? root : document;
+    var isWide =
+      scope === document ||
+      scope === document.documentElement ||
+      scope === document.body;
+    if (!isWide) {
+      if (scope.querySelector && scope.querySelector('article[data-testid="tweet"]')) {
+        return;
+      }
+      var scopeText = (scope.textContent || "").toLowerCase();
+      if (scopeText.indexOf("follow") === -1 && scopeText.indexOf("premium") === -1) {
+        return;
+      }
+    }
+
     var seen = typeof WeakSet === "function" ? new WeakSet() : null;
     function consider(h) {
       if (!h || (seen && seen.has(h))) return;
@@ -597,17 +647,12 @@
       }
     }
     if (scope.matches && scope.matches("h2, span")) consider(scope);
-    var wide =
-      scope === document ||
-      scope === document.documentElement ||
-      scope === document.body;
-    if (wide) {
-      // A document-wide "span" query grows with every tweet still mounted.
-      var heads = scope.querySelectorAll("h2");
-      var spans = scope.querySelectorAll(
-        "[data-testid='cellInnerDiv'] span, section span, aside span, [role='region'] span"
-      );
+    if (isWide) {
+      var heads = scope.querySelectorAll("h2, [role='heading']");
       for (var hi = 0; hi < heads.length; hi++) consider(heads[hi]);
+      var spans = scope.querySelectorAll(
+        "aside span, section[aria-labelledby] span, [role='region'] span"
+      );
       for (var si = 0; si < spans.length; si++) consider(spans[si]);
       return;
     }
@@ -636,6 +681,19 @@
 
   function cellLooksLikeLivePromo(cell) {
     if (!cell) return false;
+    var hasTweetText = cellHasNormalTweetText(cell);
+    if (hasTweetText && cell.querySelector && cell.querySelector('article[data-testid="tweet"]')) {
+      return false;
+    }
+    var cellTxt = (cell.textContent || "").toLowerCase();
+    if (
+      cellTxt.indexOf("live") === -1 &&
+      cellTxt.indexOf("space") === -1 &&
+      cellTxt.indexOf("broadcast") === -1 &&
+      cellTxt.indexOf("event") === -1
+    ) {
+      return false;
+    }
     var links = cell.querySelectorAll("a[href]");
     var hasLiveLink = false;
     for (var li = 0; li < links.length; li++) {
@@ -775,6 +833,7 @@
     var links = document.querySelectorAll('a[href*="/compose/"]');
     for (var li = 0; li < links.length; li++) {
       var a = links[li];
+      if (a.getAttribute("data-mt-robin-hide") === "1") continue;
       var st = window.getComputedStyle(a);
       if (st.position !== "fixed" && st.position !== "absolute") continue;
       var r = a.getBoundingClientRect();
@@ -837,6 +896,7 @@
 
     for (var ti = 0; ti < Math.min(kids.length, 8); ti++) {
       var block = kids[ti];
+      if (block.getAttribute("data-mt-robin-hide") === "1") continue;
       var br = block.getBoundingClientRect();
       if (br.height === 0) continue;
       if (br.top > 240) break;
@@ -870,6 +930,10 @@
       );
       var el = tablist;
       for (var depth = 0; el && el !== col && depth < 8; depth++) {
+        if (el.getAttribute("data-mt-robin-hide") === "1") {
+          el = el.parentElement;
+          continue;
+        }
         var st = window.getComputedStyle(el);
         if (
           (st.position === "sticky" || st.position === "fixed") &&
@@ -891,10 +955,17 @@
     var hooks = col.querySelectorAll(
       '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"], [data-testid="toolBar"], [data-testid="tweetButtonInline"], div[role="textbox"][contenteditable="true"]'
     );
+    if (hooks.length === 0) return;
     var hidden = {};
     for (var hi = 0; hi < hooks.length; hi++) {
       var hook = hooks[hi];
-      if (hook.closest && hook.closest('article[data-testid="tweet"]')) continue;
+      if (
+        hook.closest &&
+        (hook.closest('article[data-testid="tweet"]') ||
+          hook.closest('[data-mt-robin-hide="1"]'))
+      ) {
+        continue;
+      }
       var hr = hook.getBoundingClientRect();
       // Top-of-feed composer only (reply boxes sit lower in the column).
       if (hr.top > 420) continue;
@@ -1080,14 +1151,13 @@
   function findNewPostsControl() {
     if (!isHomePath()) return null;
     var nodes = document.querySelectorAll(
-      '[role="button"], button, a[role="link"], div[role="button"], div[tabindex="0"], span'
+      '[role="button"], button, a[role="link"], div[role="button"]'
     );
     var hidden = null;
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
       var label = (
         el.getAttribute("aria-label") ||
-        el.innerText ||
         el.textContent ||
         ""
       )
@@ -1095,15 +1165,10 @@
         .trim()
         .toLowerCase();
       if (!newPostsLabelMatch(label)) continue;
-      // Prefer a clickable ancestor when the match is an inner span.
-      var clickable =
-        el.closest(
-          '[role="button"], button, a[role="link"], div[role="button"], div[tabindex="0"]'
-        ) || el;
-      var r = clickable.getBoundingClientRect();
+      var r = el.getBoundingClientRect();
       var visible = r.width >= 8 && r.height >= 8 && r.bottom > 0 && r.top < window.innerHeight;
-      if (visible) return clickable;
-      if (!hidden) hidden = clickable;
+      if (visible) return el;
+      if (!hidden) hidden = el;
     }
     return hidden;
   }
@@ -1227,10 +1292,17 @@
   // --- Boot gate: hide until Following / Latest / chrome work settles ---
   var bootStart = Date.now();
   var bootLatestOkAt = 0;
+  var bootReadyAt = 0;
   var bootRevealed = false;
   var BOOT_HARD_MS = 5000;
   var BOOT_AFTER_LATEST_MS = 1200;
   var BOOT_FOLLOWING_SETTLE_MS = 800;
+
+  if (typeof performance !== "undefined" && performance.mark) {
+    try {
+      performance.mark("robin:boot:start");
+    } catch (e) {}
+  }
 
   function notifyBootReady() {
     try {
@@ -1252,8 +1324,19 @@
   function revealBoot() {
     if (bootRevealed) return;
     bootRevealed = true;
+    bootReadyAt = Date.now();
     var root = document.documentElement;
     if (root) root.setAttribute("data-mt-boot-ready", "1");
+    if (typeof performance !== "undefined" && performance.mark) {
+      try {
+        performance.mark("robin:boot:ready");
+        performance.measure(
+          "robin:boot",
+          "robin:boot:start",
+          "robin:boot:ready"
+        );
+      } catch (e) {}
+    }
     notifyBootReady();
   }
 
@@ -1328,7 +1411,8 @@
     if (isBootReady()) revealBoot();
   }
 
-  var DRAIN_BUDGET = 8;
+  var DRAIN_BUDGET = 24;
+  var processedCells = typeof WeakSet === "function" ? new WeakSet() : null;
   var needsFullPass = true;
   var pendingNodes = [];
   var pendingSeen = typeof WeakSet === "function" ? new WeakSet() : null;
@@ -1383,6 +1467,10 @@
       hideLiveContentBlocks(document);
       hidePageHeaderFallback();
       hideComposeButtonFallback();
+      var allCells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
+      if (processedCells) {
+        for (var ac = 0; ac < allCells.length; ac++) processedCells.add(allCells[ac]);
+      }
     } else {
       var batch = pendingNodes;
       pendingNodes = [];
@@ -1395,6 +1483,7 @@
       var limit = Math.min(work.length, DRAIN_BUDGET);
       for (var w = 0; w < limit; w++) {
         var n = work[w];
+        if (processedCells) processedCells.add(n);
         labelRepostTimes(n);
         hideWhoToFollowBlocks(n);
         hideLiveContentBlocks(n);
@@ -1455,7 +1544,10 @@
 
   function queueMountedCells() {
     var cells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
-    for (var i = 0; i < cells.length; i++) rememberPending(cells[i]);
+    for (var i = 0; i < cells.length; i++) {
+      if (processedCells && processedCells.has(cells[i])) continue;
+      rememberPending(cells[i]);
+    }
   }
 
   // X updates the timeline on a 100ms throttle and, while a fling is in
@@ -1524,6 +1616,10 @@
     clearTimeout(scrollIdleTimer);
     scrollIdleTimer = setTimeout(function () {
       scrolling = false;
+      if (lastFeedScroller && Date.now() >= freezeUntil) {
+        savedScrollY = readScrollerY(lastFeedScroller);
+        savedAnchor = null;
+      }
       queueMountedCells();
       schedule();
     }, 120);
@@ -1863,29 +1959,16 @@
     "scroll",
     function (e) {
       var t = e.target;
-      var el = null;
-      if (t && t !== window && t !== document && typeof t.scrollTop === "number") {
-        el = t;
-      } else {
-        el = document.scrollingElement || document.documentElement;
-      }
-      if (
-        el &&
-        isHomePath() &&
-        Date.now() >= pinUntil &&
-        el.scrollHeight > (el.clientHeight || 0) + 80
-      ) {
-        lastFeedScroller = el;
-        if (Date.now() >= freezeUntil) {
-          savedScrollY = readScrollerY(el);
-          savedAnchor = null;
-        }
-      }
+      var el =
+        t && t !== window && t !== document && typeof t.scrollTop === "number"
+          ? t
+          : document.scrollingElement || document.documentElement;
+      if (el) lastFeedScroller = el;
       if (pinUntil && Date.now() < pinUntil && isHomePath() && !applyingPin) {
         pinFeedStep();
       }
     },
-    true
+    { capture: true, passive: true }
   );
 
   var lastHref = location.href;
@@ -1924,6 +2007,70 @@
     patchAndroidScroller(window.scroller);
     noteLocation(location.href);
   }, 500);
+
+  // --- In-App Automated Performance Benchmark Harness ---
+  window.__ROBIN_RUN_BENCHMARK__ = function () {
+    var initialLoadMs =
+      bootReadyAt > 0 ? bootReadyAt - bootStart : Date.now() - bootStart;
+    var scroller =
+      lastFeedScroller ||
+      document.scrollingElement ||
+      document.documentElement ||
+      window;
+
+    var scrollStart = performance.now();
+    var stepCount = 20;
+    var stepIndex = 0;
+    var stepDistance = 75;
+
+    function doScrollStep() {
+      if (stepIndex < stepCount) {
+        stepIndex++;
+        if (scroller === window) {
+          window.scrollBy(0, stepDistance);
+        } else {
+          scroller.scrollTop += stepDistance;
+        }
+        window.dispatchEvent(new Event("scroll"));
+        setTimeout(doScrollStep, 16);
+      } else {
+        // Wait for scroll debounce + queue drain + double RAF render settle
+        setTimeout(function () {
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              var scrollEnd = performance.now();
+              var scrollRenderCompletionMs = Math.round(
+                scrollEnd - scrollStart
+              );
+              var result = {
+                initialLoadMs: initialLoadMs,
+                scrollRenderCompletionMs: scrollRenderCompletionMs,
+                bootReady: !!bootRevealed,
+                timestamp: Date.now(),
+              };
+              var json = JSON.stringify(result);
+              try {
+                if (window.RobinBenchmark && window.RobinBenchmark.post) {
+                  window.RobinBenchmark.post(json);
+                }
+              } catch (e) {}
+              try {
+                if (
+                  window.webkit &&
+                  window.webkit.messageHandlers &&
+                  window.webkit.messageHandlers.robinBenchmark
+                ) {
+                  window.webkit.messageHandlers.robinBenchmark.postMessage(json);
+                }
+              } catch (e2) {}
+            });
+          });
+        }, 160);
+      }
+    }
+
+    doScrollStep();
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", requestFullPass);

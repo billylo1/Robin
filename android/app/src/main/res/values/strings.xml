@@ -43,4 +43,12 @@
     <string name="filter_show_live_content">Show live content</string>
     <string name="filter_hide_who_to_follow">Hide Who to follow</string>
     <string name="filter_hide_open_app">Hide open-in-app prompts</string>
+    <string name="benchmark_title">Performance Benchmark</string>
+    <string name="benchmark_initial_load">Initial Load Time</string>
+    <string name="benchmark_scroll_completion">Scroll Render Settle</string>
+    <string name="benchmark_run_button">Run Benchmark</string>
+    <string name="benchmark_running">Running Benchmark…</string>
+    <string name="benchmark_set_baseline">Set as Baseline</string>
+    <string name="benchmark_status_optimal">Optimal</string>
+    <string name="benchmark_status_regression">Regression</string>
 </resources>

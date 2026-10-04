@@ -50,7 +50,15 @@ object XFilterInjector {
                   var s = document.createElement('style');
                   s.id = 'robin-x-filter-css';
                   s.textContent = $cssJson;
-                  (document.documentElement || document.head || document).appendChild(s);
+                  var p = document.head || document.documentElement;
+                  if (p) {
+                    p.appendChild(s);
+                  } else {
+                    document.addEventListener('DOMContentLoaded', function(){
+                      var p2 = document.head || document.documentElement;
+                      if (p2 && !document.getElementById('robin-x-filter-css')) p2.appendChild(s);
+                    });
+                  }
                 }
                 var root = document.documentElement;
                 if (root) {

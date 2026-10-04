@@ -6,6 +6,7 @@ struct InfoSheet: View {
     @Environment(FontScaleStore.self) private var fontScale
     @Environment(FeedRefreshIntervalStore.self) private var feedRefresh
     @Environment(FilterSettingsStore.self) private var filterStore
+    @Environment(AppChrome.self) private var chrome
     @Environment(\.dismiss) private var dismiss
 
     var onSignOut: () -> Void = {}
@@ -109,6 +110,80 @@ struct InfoSheet: View {
                         "Show live content",
                         isOn: invertedBinding(\.hideLiveContent)
                     )
+                }
+
+                Section("Performance Benchmark") {
+                    let current = chrome.benchmark.latestResult ?? chrome.benchmark.baselineResult
+                    let delta = current.deltaVs(baseline: chrome.benchmark.baselineResult)
+
+                    HStack {
+                        Text("Initial load")
+                            .mtFont(.body)
+                        Spacer()
+                        Text("\(current.initialLoadMs) ms")
+                            .mtFont(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.initialLoadMs > 0 {
+                            let pct = String(format: "%+.1f%%", delta.initialPct)
+                            Text("(\(pct))")
+                                .mtFont(.caption)
+                                .foregroundStyle(delta.initialPct <= 5.0 ? .green : .red)
+                        }
+                    }
+
+                    HStack {
+                        Text("Scroll render settle")
+                            .mtFont(.body)
+                        Spacer()
+                        Text("\(current.scrollRenderCompletionMs) ms")
+                            .mtFont(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.scrollRenderCompletionMs > 0 {
+                            let pct = String(format: "%+.1f%%", delta.scrollPct)
+                            Text("(\(pct))")
+                                .mtFont(.caption)
+                                .foregroundStyle(delta.scrollPct <= 5.0 ? .green : .red)
+                        }
+                    }
+
+                    HStack {
+                        Text("Status")
+                            .mtFont(.body)
+                        Spacer()
+                        Text(delta.isRegressed ? "Regression" : "Optimal")
+                            .mtFont(.subheadline)
+                            .foregroundStyle(delta.isRegressed ? .red : .green)
+                    }
+
+                    HStack {
+                        Button {
+                            chrome.benchmark.runBenchmark()
+                        } label: {
+                            if chrome.benchmark.isRunning {
+                                HStack {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("Running…")
+                                }
+                            } else {
+                                Text("Run Benchmark")
+                            }
+                        }
+                        .disabled(chrome.benchmark.isRunning)
+
+                        Spacer()
+
+                        if let latest = chrome.benchmark.latestResult {
+                            Button("Set as Baseline") {
+                                chrome.benchmark.setAsBaseline(latest)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.caption)
+                            .disabled(chrome.benchmark.isRunning)
+                        }
+                    }
                 }
 
                 Section("Credits") {

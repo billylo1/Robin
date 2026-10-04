@@ -1,0 +1,78 @@
+{
+  "version": "1.0.0",
+  "recordedAt": "2026-10-03T21:36:50-04:00",
+  "inAppBenchmark": {
+    "platform": "Android 15 (API 35)",
+    "device": "Pixel 9 Android Emulator (emulator-5554)",
+    "engine": "Android System WebView / Chromium 151",
+    "targetUrl": "https://x.com/home",
+    "metrics": {
+      "initialLoadMs": 2414,
+      "scrollRenderCompletionMs": 618,
+      "bootReady": true,
+      "isRegressed": false
+    },
+    "thresholds": {
+      "initialLoadRegressionMs": 4000,
+      "scrollRenderRegressionMs": 1000
+    }
+  },
+  "syntheticEngineBenchmark": {
+    "description": "Headless filter engine layout reflow and DOM query traps on virtualized feed",
+    "engines": ["WebKit (iOS WKWebView)", "Chromium (Android WebView)"],
+    "baselinePreOptimization": {
+      "initialLoad": {
+        "bootReady": false,
+        "totalLayoutReads": 112,
+        "innerTextReads": 93,
+        "getBoundingClientRectCount": 19,
+        "totalDOMQueries": 133
+      },
+      "fastScrolling": {
+        "scrollEvents": 50,
+        "scrollLayoutReads": 78,
+        "scrollScrollHeight": 53,
+        "scrollGBR": 25,
+        "scrollDOMQueries": 133
+      },
+      "virtualizedCellMounting": {
+        "newCells": 20,
+        "mountLayoutReads": 75,
+        "mountGBR": 75,
+        "mountDOMQueries": 232
+      },
+      "totalForcedReflows": 265,
+      "totalDOMQueries": 498
+    },
+    "currentOptimized": {
+      "initialLoad": {
+        "bootReady": true,
+        "totalLayoutReads": 5,
+        "innerTextReads": 0,
+        "getBoundingClientRectCount": 5,
+        "totalDOMQueries": 93
+      },
+      "fastScrolling": {
+        "scrollEvents": 50,
+        "scrollLayoutReads": 0,
+        "scrollScrollHeight": 0,
+        "scrollGBR": 0,
+        "scrollDOMQueries": 1
+      },
+      "virtualizedCellMounting": {
+        "newCells": 20,
+        "mountLayoutReads": 1,
+        "mountGBR": 1,
+        "mountDOMQueries": 119
+      },
+      "totalForcedReflows": 6,
+      "totalDOMQueries": 213
+    },
+    "improvements": {
+      "forcedReflowReductionPercent": "-97.7%",
+      "scrollingReflowReductionPercent": "-100.0%",
+      "domQueryReductionPercent": "-57.2%",
+      "innerTextLayoutThrashing": "Eliminated (0 reads)"
+    }
+  }
+}

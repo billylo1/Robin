@@ -11,6 +11,9 @@ a[href*="quick_promote_web"] {
 }
 
 /* Inline "Who to follow" / topics carousels on home */
+[data-testid="primaryColumn"] aside[aria-label="Who to follow"],
+[data-testid="primaryColumn"] aside[aria-label="Relevant people"],
+[data-testid="primaryColumn"] aside[aria-label="Topics to follow"],
 [data-testid="primaryColumn"] section[aria-labelledby^="accessible-list-"] > div[aria-label$="Carousel"],
 [data-testid="primaryColumn"] a[href*="/i/flow/topics_selector"],
 [data-testid="primaryColumn"] a[href*="/i/topics/picker/home"] {
@@ -115,6 +118,7 @@ html.mt-hide-live[data-mt-home="1"] a[href*="/i/events/"] {
 
 /* Floating / side-nav compose button (toggle: hideComposeButton) */
 html.mt-hide-compose a[data-testid="SideNav_NewTweet_Button"],
+html.mt-hide-compose [data-testid="FloatingActionButton_compose"],
 html.mt-hide-compose a[href="/compose/post"],
 html.mt-hide-compose a[href="/compose/tweet"],
 html.mt-hide-compose a[href="/compose/post/"] {

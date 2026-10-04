@@ -17,9 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import org.evergreenlabs.robin.ui.theme.OptimalGreen
+import java.util.Locale
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
@@ -111,6 +114,10 @@ fun InfoSheet(
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
             ShowTogglesSection()
+            Spacer(modifier = Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(12.dp))
+            PerformanceBenchmarkSection()
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
@@ -428,5 +435,157 @@ private fun FilterSwitchRow(
             onCheckedChange = onCheckedChange,
             enabled = enabled,
         )
+    }
+}
+
+@Composable
+private fun PerformanceBenchmarkSection() {
+    val benchmark = AppGraph.benchmark
+    val latest by benchmark.latestResult.collectAsStateWithLifecycle()
+    val baseline by benchmark.baselineResult.collectAsStateWithLifecycle()
+    val isRunning by benchmark.isRunning.collectAsStateWithLifecycle()
+
+    val current = latest ?: baseline
+    val delta = current.deltaVs(baseline)
+
+    Text(
+        text = stringResource(R.string.benchmark_title),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            // Initial load row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.benchmark_initial_load),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${current.initialLoadMs} ms",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (latest != null && baseline.initialLoadMs > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val pctText = String.format(Locale.US, "%+.1f%%", delta.initialLoadPct)
+                        val color = if (delta.initialLoadPct <= 5.0) OptimalGreen else MaterialTheme.colorScheme.error
+                        Text(
+                            text = "($pctText)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = color,
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Scroll render completion row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.benchmark_scroll_completion),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${current.scrollRenderCompletionMs} ms",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (latest != null && baseline.scrollRenderCompletionMs > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val pctText = String.format(Locale.US, "%+.1f%%", delta.scrollRenderPct)
+                        val color = if (delta.scrollRenderPct <= 5.0) OptimalGreen else MaterialTheme.colorScheme.error
+                        Text(
+                            text = "($pctText)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = color,
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Status chip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = "Status",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = if (delta.isRegressed) {
+                        stringResource(R.string.benchmark_status_regression)
+                    } else {
+                        stringResource(R.string.benchmark_status_optimal)
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (delta.isRegressed) MaterialTheme.colorScheme.error else OptimalGreen,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Button(
+                    onClick = { benchmark.runBenchmark() },
+                    enabled = !isRunning,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                ) {
+                    if (isRunning) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .width(16.dp)
+                                .height(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.benchmark_running))
+                    } else {
+                        Text(stringResource(R.string.benchmark_run_button))
+                    }
+                }
+
+                if (latest != null) {
+                    TextButton(
+                        onClick = { benchmark.setAsBaseline(latest!!) },
+                        enabled = !isRunning,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.benchmark_set_baseline),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
+            }
+        }
     }
 }

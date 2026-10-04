@@ -2,6 +2,7 @@ package org.evergreenlabs.robin
 
 import android.content.Context
 import org.evergreenlabs.robin.services.AppChrome
+import org.evergreenlabs.robin.services.BenchmarkStore
 import org.evergreenlabs.robin.services.FeedRefreshIntervalStore
 import org.evergreenlabs.robin.services.FontScaleStore
 import org.evergreenlabs.robin.xfilter.FilterSettingsStore
@@ -16,6 +17,8 @@ object AppGraph {
         private set
     lateinit var filterSettings: FilterSettingsStore
         private set
+    lateinit var benchmark: BenchmarkStore
+        private set
 
     val isInitialized: Boolean get() = ::chrome.isInitialized
 
@@ -26,5 +29,6 @@ object AppGraph {
         fontScale = FontScaleStore(app)
         feedRefreshInterval = FeedRefreshIntervalStore(app)
         filterSettings = FilterSettingsStore(app)
+        benchmark = BenchmarkStore(app)
     }
 }

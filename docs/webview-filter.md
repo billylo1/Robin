@@ -26,6 +26,7 @@ Host sets `window.__ROBIN_SETTINGS__` before `filter-core.js` runs. CSS id: `rob
 | Sign out | clear cookies / `WebStorage` → login URL | `WKWebsiteDataStore` → login URL |
 | Layout | Mobile Chrome UA (best-effort) | iPhone Safari UA + `preferredContentMode = .mobile` + document-start mobile identity spoof; on device viewport uses `device-width` (desktop ≥1000px breakpoints forced off); on Mac (`isiOSAppOnMac`) layout identity is frozen at 390px so X mounts the mobile shell |
 | Boot cover | Native overlay + `RobinBoot.ready()` | Native overlay + `mtBoot` script message |
+| Benchmark | `BenchmarkStore` (SharedPreferences) + ADB broadcast | `RobinBenchmarkStore` (UserDefaults) + ScriptMessageHandler |
 
 X may still try **desktop** chrome on wide WebViews. iOS injects a force-mobile script (mobile UA / touch / pointer; blocks ≥1000px desktop breakpoints). **Phones/iPads** lay out to the real WebView width (landscape / tablet widen up to ~840px). **Mac Designed-for-iPhone/iPad** freezes `innerWidth` / viewport at phone size — a wide Mac WebView otherwise mounts desktop/hybrid DOM while Robin hides those rails, which blanks the feed. `hidePageHeader` hides mobile `TopNavBar` / desktop left/right rails and expands `primaryColumn`. Home tab forcing only clicks label-verified For You / Following controls.
 
@@ -75,3 +76,10 @@ Google and Apple sign-in use `window.open`. Hosts present a **real in-app child 
 ## External links
 
 Main-frame http(s) navigations stay in the WebView only for allowlisted hosts (x.com / twitter.com + Google/Apple OAuth CDNs). **`t.co` is not allowlisted** — X opens tweet links via `window.open(https://t.co/…)`, and hosts present an **in-app system browser sheet** (`SFSafariViewController` / Chrome Custom Tabs) instead of spawning the OAuth child WebView. Done / back returns to the feed. Other destinations (articles, link previews) behave the same. Custom schemes (`twitter://`, `x://`, `intent://` nags) stay blocked or rewritten in-app as before.
+
+## Performance Benchmarking
+
+Robin includes built-in in-app benchmarking instrumentation across Android and iOS to measure and protect WebView rendering performance (initial load time, fast scroll settle time, and layout reflow counts).
+
+See [performance-benchmark.md](performance-benchmark.md) for full baseline data, regression thresholds, and execution steps (via in-app Settings UI, automated ADB broadcast, or headless synthetic engine).
+

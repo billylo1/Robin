@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 
 val BrandBlue = Color(0xFF1D9BF0)
 val ErrorRed = Color(0xFFEF5350)
+val OptimalGreen = Color(0xFF00BA7C)
 /** Header / brand cream (matches launcher mark). */
 val RobinCream = Color(0xFFF5F0E8)
 /** Dark-mode header chrome (matches DarkColors.surface). */

@@ -318,6 +318,24 @@ struct XWebFeedView: View {
         .onChange(of: pageURL) { _, _ in
             flushPendingFeedSettingsReloadIfNeeded()
         }
+        .onChange(of: webView, initial: true) { _, newWv in
+            guard let newWv else {
+                chrome.benchmark.runner = nil
+                return
+            }
+            chrome.benchmark.runner = { completion in
+                let script = "(async function(){ try { return typeof window.__ROBIN_RUN_BENCHMARK__ === 'function' ? await window.__ROBIN_RUN_BENCHMARK__() : JSON.stringify({error:'Harness not ready'}); } catch(e) { return JSON.stringify({error: e.message}); } })()"
+                newWv.evaluateJavaScript(script) { rawResult, error in
+                    guard let rawStr = rawResult as? String,
+                          let data = rawStr.data(using: .utf8),
+                          let res = try? JSONDecoder().decode(BenchmarkResult.self, from: data) else {
+                        completion(nil)
+                        return
+                    }
+                    completion(res)
+                }
+            }
+        }
         .onChange(of: showBootCover) { _, show in
             bootCoverTimeoutTask?.cancel()
             if !show {

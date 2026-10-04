@@ -205,6 +205,16 @@ private class BootBridge(private val onReady: () -> Unit) {
     }
 }
 
+/** Called from filter-core when the benchmark run settles. */
+private class BenchmarkBridge(private val onResult: (String) -> Unit) {
+    private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun post(json: String) {
+        main.post { onResult(json) }
+    }
+}
+
 /** Mobile Chrome — keeps X on the TopNavBar layout (same CSS path as iOS). */
 private const val MOBILE_CHROME_USER_AGENT =
     "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 " +
@@ -730,6 +740,28 @@ fun XWebFeedScreen(
         }
     }
 
+    val activeBenchmarkCallback = remember {
+        mutableStateOf<((org.evergreenlabs.robin.services.BenchmarkResult?) -> Unit)?>(null)
+    }
+
+    DisposableEffect(webViewRef) {
+        val wv = webViewRef
+        if (wv != null) {
+            AppGraph.benchmark.registerRunner { onComplete ->
+                activeBenchmarkCallback.value = onComplete
+                wv.evaluateJavascript(
+                    "if (typeof window.__ROBIN_RUN_BENCHMARK__ === 'function') window.__ROBIN_RUN_BENCHMARK__();",
+                    null,
+                )
+            }
+        } else {
+            AppGraph.benchmark.registerRunner(null)
+        }
+        onDispose {
+            AppGraph.benchmark.registerRunner(null)
+        }
+    }
+
     // While foregrounded near the top, periodically self-refresh (same path as resume/title).
     LaunchedEffect(isResumed, refreshIntervalSeconds) {
         if (!isResumed || refreshIntervalSeconds <= 0) return@LaunchedEffect
@@ -896,6 +928,23 @@ fun XWebFeedScreen(
                             }
                         },
                         "RobinBoot",
+                    )
+                    addJavascriptInterface(
+                        BenchmarkBridge { raw ->
+                            val result = org.evergreenlabs.robin.services.BenchmarkResult.fromJsonString(raw)
+                            if (result != null) {
+                                AppGraph.benchmark.recordRun(result)
+                                android.util.Log.i(
+                                    "RobinBenchmark",
+                                    "In-App Benchmark Complete: initialLoad=${result.initialLoadMs}ms, " +
+                                        "scrollRenderCompletion=${result.scrollRenderCompletionMs}ms, bootReady=${result.bootReady}",
+                                )
+                            }
+                            val cb = activeBenchmarkCallback.value
+                            activeBenchmarkCallback.value = null
+                            cb?.invoke(result)
+                        },
+                        "RobinBenchmark",
                     )
 
                     webChromeClient = object : WebChromeClient() {
