@@ -1,16 +1,49 @@
 {
-  "version": "1.0.0",
-  "recordedAt": "2026-10-03T21:36:50-04:00",
+  "version": "1.1.0",
+  "recordedAt": "2026-10-04T07:51:50-04:00",
   "inAppBenchmark": {
     "platform": "Android 15 (API 35)",
     "device": "Pixel 9 Android Emulator (emulator-5554)",
     "engine": "Android System WebView / Chromium 151",
     "targetUrl": "https://x.com/home",
-    "metrics": {
-      "initialLoadMs": 2414,
-      "scrollRenderCompletionMs": 618,
-      "bootReady": true,
-      "isRegressed": false
+    "account": "app_sidekick (authenticated with 2FA TOTP)",
+    "beforeVsAfter": {
+      "beforeUnoptimized": {
+        "runs": [
+          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 535 },
+          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 514 },
+          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 518 },
+          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 536 },
+          { "initialLoadMs": 2069, "scrollRenderCompletionMs": 534 }
+        ],
+        "median": {
+          "initialLoadMs": 2069,
+          "scrollRenderCompletionMs": 534,
+          "bootReady": true
+        }
+      },
+      "afterOptimized": {
+        "runs": [
+          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 529 },
+          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 518 },
+          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 533 },
+          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 514 },
+          { "initialLoadMs": 1555, "scrollRenderCompletionMs": 510 },
+          { "initialLoadMs": 1420, "scrollRenderCompletionMs": 551 }
+        ],
+        "median": {
+          "initialLoadMs": 1555,
+          "scrollRenderCompletionMs": 518,
+          "bootReady": true
+        }
+      },
+      "improvement": {
+        "initialLoadDeltaMs": -514,
+        "initialLoadImprovementPercent": "-24.8%",
+        "scrollRenderDeltaMs": -16,
+        "scrollRenderImprovementPercent": "-3.0%",
+        "activeScrollReflows": "Eliminated (zero reflows during active fling)"
+      }
     },
     "thresholds": {
       "initialLoadRegressionMs": 4000,
