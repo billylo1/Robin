@@ -1538,14 +1538,391 @@
 
   observeFeed();
 
-  // SPA path changes
+  // Tapping a post scrolls that row toward the top before X records history.
+  // Back then restores the shifted position, so the feed lands further down.
+  // Snapshot the viewport at pointerdown and pin it again when /home returns.
+  var savedScrollY = null;
+  var savedAnchor = null;
+  var lastFeedScroller = null;
+  var pinArticle = null;
+  var freezeUntil = 0;
+  var pinUntil = 0;
+  var pinLoopOn = false;
+  var applyingPin = false;
+  var lastPinTop = null;
+  var lastNudgeMoved = false;
+  var tapX = 0;
+  var tapY = 0;
+
+  function pathnameOf(href) {
+    var path = String(href || "");
+    var hash = path.indexOf("#");
+    if (hash !== -1) path = path.slice(0, hash);
+    var q = path.indexOf("?");
+    if (q !== -1) path = path.slice(0, q);
+    var scheme = path.indexOf("://");
+    if (scheme !== -1) {
+      var slash = path.indexOf("/", scheme + 3);
+      path = slash === -1 ? "/" : path.slice(slash);
+    }
+    return path || "/";
+  }
+
+  function hrefIsHome(href) {
+    var p = pathnameOf(href);
+    return p === "/" || p === "/home" || p.indexOf("/home") === 0;
+  }
+
+  function asElement(node) {
+    if (!node) return null;
+    if (node.nodeType === 1) return node;
+    return node.parentElement || null;
+  }
+
+  function statusIdFromArticle(article) {
+    if (!article || !article.querySelector) return "";
+    var link = article.querySelector('a[href*="/status/"] time');
+    link = link && link.closest ? link.closest("a") : null;
+    if (!link) link = article.querySelector('a[href*="/status/"]');
+    var m = link && /\/status\/(\d+)/.exec(link.getAttribute("href") || "");
+    return m ? m[1] : "";
+  }
+
+  function captureAnchor(el) {
+    if (!el || !el.closest) return null;
+    var article = el.closest('article[data-testid="tweet"]');
+    if (!article) {
+      var link = el.closest('a[href*="/status/"]');
+      article = link && link.closest ? link.closest("article") : null;
+    }
+    if (!article) return null;
+    var id = statusIdFromArticle(article);
+    if (!id) return null;
+    return { id: id, top: article.getBoundingClientRect().top };
+  }
+
+  function isDocumentScroller(el) {
+    return (
+      el === document.scrollingElement ||
+      el === document.documentElement ||
+      el === document.body
+    );
+  }
+
+  function readScrollerY(el) {
+    if (!el) return 0;
+    if (isDocumentScroller(el)) return window.scrollY || el.scrollTop || 0;
+    return el.scrollTop || 0;
+  }
+
+  function primaryFeedScroller() {
+    var best = null;
+    var bestExtra = 0;
+    var docBest = null;
+    var docExtra = 0;
+    function consider(el) {
+      if (!el || el.nodeType !== 1) return;
+      var extra = (el.scrollHeight || 0) - (el.clientHeight || 0);
+      if (extra <= 80) return;
+      if (isDocumentScroller(el)) {
+        if (extra > docExtra) {
+          docExtra = extra;
+          docBest = el;
+        }
+        return;
+      }
+      if (extra > bestExtra) {
+        bestExtra = extra;
+        best = el;
+      }
+    }
+    consider(document.scrollingElement);
+    consider(document.documentElement);
+    consider(document.body);
+    var col = document.querySelector('[data-testid="primaryColumn"]');
+    var node = col;
+    for (var i = 0; node && i < 10; i++) {
+      consider(node);
+      node = node.parentElement;
+    }
+    if (col) {
+      var stack = [col];
+      var seen = 0;
+      while (stack.length && seen < 40) {
+        var cur = stack.pop();
+        seen++;
+        consider(cur);
+        if (cur.getAttribute && cur.getAttribute("data-testid") === "tweet") continue;
+        var kids = cur.children;
+        for (var k = 0; k < kids.length && k < 4; k++) stack.push(kids[k]);
+      }
+    }
+    return best || docBest;
+  }
+
+  function feedScrollerEl() {
+    if (
+      lastFeedScroller &&
+      lastFeedScroller.isConnected &&
+      lastFeedScroller.scrollHeight > (lastFeedScroller.clientHeight || 0) + 80
+    ) {
+      return lastFeedScroller;
+    }
+    return primaryFeedScroller();
+  }
+
+  function currentFeedScrollY() {
+    return readScrollerY(feedScrollerEl());
+  }
+
+  function writeFeedScroll(y) {
+    var el = feedScrollerEl();
+    if (!el) return;
+    if (isDocumentScroller(el)) {
+      if (Math.abs((window.scrollY || 0) - y) > 1) window.scrollTo(0, y);
+      return;
+    }
+    // Window scroll on top of an inner timeline shifts the whole feed.
+    if ((window.scrollY || 0) > 1) window.scrollTo(0, 0);
+    if (Math.abs((el.scrollTop || 0) - y) > 1) el.scrollTop = y;
+  }
+
+  function nudgeFeedBy(delta) {
+    var el = feedScrollerEl();
+    if (!el) return false;
+    var before = readScrollerY(el);
+    if (isDocumentScroller(el)) {
+      window.scrollTo(0, before + delta);
+    } else {
+      if ((window.scrollY || 0) > 1) window.scrollTo(0, 0);
+      el.scrollTop = before + delta;
+    }
+    return Math.abs(readScrollerY(el) - before) > 0.5;
+  }
+
+  function findFeedArticle(statusId) {
+    if (!isHomePath() || !statusId) return null;
+    if (
+      pinArticle &&
+      pinArticle.isConnected &&
+      statusIdFromArticle(pinArticle) === statusId
+    ) {
+      return pinArticle;
+    }
+    var nodes = document.querySelectorAll(
+      '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
+    );
+    for (var i = 0; i < nodes.length; i++) {
+      if (statusIdFromArticle(nodes[i]) === statusId) {
+        pinArticle = nodes[i];
+        return pinArticle;
+      }
+    }
+    return null;
+  }
+
+  function rememberFeedTap(target) {
+    if (!isHomePath()) return;
+    var el = asElement(target);
+    savedScrollY = currentFeedScrollY();
+    savedAnchor = captureAnchor(el);
+    var link = el && el.closest && el.closest("a[href]");
+    if (savedAnchor || link) freezeUntil = Date.now() + 900;
+  }
+
+  function pinFeedStep() {
+    if (applyingPin) return false;
+    applyingPin = true;
+    try {
+      if (savedAnchor) {
+        var article = findFeedArticle(savedAnchor.id);
+        if (article) {
+          var top = article.getBoundingClientRect().top;
+          var delta = top - savedAnchor.top;
+          if (Math.abs(delta) < 2) return true;
+          // Row didn't move after the last nudge. One stale frame is normal;
+          // a second means this scroller isn't the feed, so use the saved offset.
+          if (lastPinTop != null && Math.abs(top - lastPinTop) < 1) {
+            if (!lastNudgeMoved && savedScrollY != null) writeFeedScroll(savedScrollY);
+            lastNudgeMoved = false;
+            return false;
+          }
+          lastPinTop = top;
+          lastNudgeMoved = nudgeFeedBy(delta);
+          return false;
+        }
+      }
+      if (savedScrollY == null) return true;
+      var el = feedScrollerEl();
+      if (!el) return false;
+      if (Math.abs(readScrollerY(el) - savedScrollY) < 2) return !savedAnchor;
+      writeFeedScroll(savedScrollY);
+      return false;
+    } finally {
+      applyingPin = false;
+    }
+  }
+
+  function beginFeedPin() {
+    if (savedScrollY == null && !savedAnchor) return;
+    pinUntil = Date.now() + 2000;
+    pinArticle = null;
+    lastPinTop = null;
+    lastNudgeMoved = false;
+    if (pinLoopOn) return;
+    pinLoopOn = true;
+    var stable = 0;
+    var started = Date.now();
+    function step() {
+      if (!pinUntil || Date.now() >= pinUntil || !isHomePath()) {
+        pinLoopOn = false;
+        pinUntil = 0;
+        return;
+      }
+      if (pinFeedStep()) stable++;
+      else stable = 0;
+      // X's virtualizer restores scroll on a short delay. Wait it out, then
+      // stop once the tapped row has held its original viewport position.
+      if (stable >= 8 && Date.now() - started > 700) {
+        pinLoopOn = false;
+        pinUntil = 0;
+        return;
+      }
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function cancelFeedPin() {
+    pinUntil = 0;
+  }
+
+  function onFeedPathChange(prevHref, nextHref) {
+    // Only when a post (or other non-home route) is popped back to the feed.
+    // The snapshot was taken on the feed itself; re-reading here would sample
+    // the status page that just unmounted.
+    if (hrefIsHome(prevHref) || !hrefIsHome(nextHref)) return;
+    freezeUntil = 0;
+    beginFeedPin();
+  }
+
+  document.addEventListener(
+    "pointerdown",
+    function (e) {
+      tapX = e.clientX;
+      tapY = e.clientY;
+      if (!isHomePath()) return;
+      if (pinUntil && Date.now() < pinUntil) cancelFeedPin();
+      rememberFeedTap(e.target);
+    },
+    true
+  );
+  document.addEventListener(
+    "pointermove",
+    function (e) {
+      if (!freezeUntil || Date.now() >= freezeUntil) return;
+      if (Math.abs(e.clientX - tapX) + Math.abs(e.clientY - tapY) > 16) {
+        freezeUntil = 0;
+      }
+    },
+    true
+  );
+  document.addEventListener(
+    "wheel",
+    function () {
+      freezeUntil = 0;
+      if (pinUntil && Date.now() < pinUntil) cancelFeedPin();
+    },
+    { capture: true, passive: true }
+  );
+  document.addEventListener(
+    "keydown",
+    function (e) {
+      if (pinUntil && Date.now() < pinUntil) cancelFeedPin();
+      if ((e.key === "Enter" || e.key === " ") && isHomePath()) {
+        rememberFeedTap(e.target);
+      }
+    },
+    true
+  );
+  document.addEventListener(
+    "click",
+    function (e) {
+      if (!isHomePath() || Date.now() < freezeUntil) return;
+      var el = asElement(e.target);
+      var anchor = captureAnchor(el);
+      var link = el && el.closest && el.closest('a[href*="/status/"]');
+      if (!anchor && !link) return;
+      savedScrollY = currentFeedScrollY();
+      if (anchor) savedAnchor = anchor;
+      freezeUntil = Date.now() + 900;
+    },
+    true
+  );
+  window.addEventListener(
+    "scroll",
+    function (e) {
+      var t = e.target;
+      var el = null;
+      if (t && t !== window && t !== document && typeof t.scrollTop === "number") {
+        el = t;
+      } else {
+        el = document.scrollingElement || document.documentElement;
+      }
+      if (
+        el &&
+        isHomePath() &&
+        Date.now() >= pinUntil &&
+        el.scrollHeight > (el.clientHeight || 0) + 80
+      ) {
+        lastFeedScroller = el;
+        if (Date.now() >= freezeUntil) {
+          savedScrollY = readScrollerY(el);
+          savedAnchor = null;
+        }
+      }
+      if (pinUntil && Date.now() < pinUntil && isHomePath() && !applyingPin) {
+        pinFeedStep();
+      }
+    },
+    true
+  );
+
   var lastHref = location.href;
+  function noteLocation(href) {
+    if (href === lastHref) return;
+    var prev = lastHref;
+    lastHref = href;
+    onFeedPathChange(prev, href);
+    requestFullPass();
+  }
+
+  var origPushState = history.pushState;
+  var origReplaceState = history.replaceState;
+  if (origPushState) {
+    history.pushState = function () {
+      var before = location.href;
+      var ret = origPushState.apply(this, arguments);
+      if (location.href !== before) noteLocation(location.href);
+      return ret;
+    };
+  }
+  if (origReplaceState) {
+    history.replaceState = function () {
+      var before = location.href;
+      var ret = origReplaceState.apply(this, arguments);
+      if (location.href !== before) noteLocation(location.href);
+      return ret;
+    };
+  }
+  window.addEventListener("popstate", function () {
+    noteLocation(location.href);
+  });
+
+  // SPA path changes (fallback if navigation skips history.pushState)
   setInterval(function () {
     patchAndroidScroller(window.scroller);
-    if (location.href !== lastHref) {
-      lastHref = location.href;
-      requestFullPass();
-    }
+    noteLocation(location.href);
   }, 500);
 
   if (document.readyState === "loading") {
