@@ -11,6 +11,8 @@ struct InfoSheet: View {
 
     var onSignOut: () -> Void = {}
 
+    @State private var keywordDraft = ""
+
     private static let minimalTwitterURL = URL(
         string: "https://github.com/typefully/minimal-twitter"
     )!
@@ -110,6 +112,34 @@ struct InfoSheet: View {
                         "Show live content",
                         isOn: invertedBinding(\.hideLiveContent)
                     )
+                }
+
+                Section("Hide keywords") {
+                    HStack {
+                        TextField("Keyword or phrase", text: $keywordDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .onSubmit { addKeyword() }
+                        Button("Add") { addKeyword() }
+                    }
+                    ForEach(filterStore.settings.hideKeywords, id: \.self) { keyword in
+                        HStack {
+                            Text(keyword)
+                                .mtFont(.body)
+                            Spacer()
+                            Button(role: .destructive) {
+                                filterStore.update { settings in
+                                    settings.hideKeywords.removeAll {
+                                        $0.caseInsensitiveCompare(keyword) == .orderedSame
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Remove \(keyword)")
+                        }
+                    }
                 }
 
                 #if DEBUG
@@ -240,6 +270,15 @@ struct InfoSheet: View {
         .controlSize(.small)
         .disabled(!enabled)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func addKeyword() {
+        guard let next = FilterSettings.addingKeyword(
+            filterStore.settings.hideKeywords,
+            keywordDraft
+        ) else { return }
+        filterStore.update { $0.hideKeywords = next }
+        keywordDraft = ""
     }
 
     /// Settings that store a “hide” flag but show a “Show …” toggle in the UI.

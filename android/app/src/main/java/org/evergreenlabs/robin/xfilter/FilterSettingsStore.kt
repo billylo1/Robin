@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import org.json.JSONArray
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -24,6 +26,7 @@ class FilterSettingsStore(private val context: Context) {
         val hideOpenAppNags = booleanPreferencesKey("hideOpenAppNags")
         val hidePageHeader = booleanPreferencesKey("hidePageHeader")
         val hideComposeButton = booleanPreferencesKey("hideComposeButton")
+        val hideKeywords = stringPreferencesKey("hideKeywords")
     }
 
     val settings: Flow<FilterSettings> = context.filterSettingsDataStore.data.map { prefs ->
@@ -42,6 +45,7 @@ class FilterSettingsStore(private val context: Context) {
             prefs[Keys.hideOpenAppNags] = next.hideOpenAppNags
             prefs[Keys.hidePageHeader] = next.hidePageHeader
             prefs[Keys.hideComposeButton] = next.hideComposeButton
+            prefs[Keys.hideKeywords] = JSONArray(next.hideKeywords).toString()
         }
     }
 
@@ -57,6 +61,22 @@ class FilterSettingsStore(private val context: Context) {
             hideOpenAppNags = this[Keys.hideOpenAppNags] ?: d.hideOpenAppNags,
             hidePageHeader = this[Keys.hidePageHeader] ?: d.hidePageHeader,
             hideComposeButton = this[Keys.hideComposeButton] ?: d.hideComposeButton,
+            hideKeywords = FilterSettings.normalizedKeywords(decodeKeywords(this[Keys.hideKeywords])),
         )
+    }
+
+    private fun decodeKeywords(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val phrase = arr.optString(i)
+                    if (phrase.isNotEmpty()) add(phrase)
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 }

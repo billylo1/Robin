@@ -239,6 +239,7 @@ enum XFilterInjector {
           root.style.setProperty('-webkit-text-size-adjust', Math.round(scale * 100) + '%', 'important');
           if (window.__ROBIN_APPLY_FONT_SCALE__) window.__ROBIN_APPLY_FONT_SCALE__();
         })();
+        if (typeof window.__ROBIN_ON_SETTINGS__ === 'function') window.__ROBIN_ON_SETTINGS__();
         """
         webView.evaluateJavaScript(script, completionHandler: nil)
     }

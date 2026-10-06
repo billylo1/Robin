@@ -15,6 +15,7 @@
  *   hideOpenAppNags: boolean (default true)
  *   hidePageHeader: boolean (default true) — hide X avatar/logo/Subscribe/tabs on home
  *   hideComposeButton: boolean (default true) — hide floating / side-nav compose button
+ *   hideKeywords: string[] (default []) — whole-word / phrase hides (cat ≠ category)
  *   fontScale: number (default 1) — page zoom for text size
  * iOS host sets window.__ROBIN_TEXT_SIZE_ADJUST__: WKWebView text ignores html
  * zoom, so scale is applied via -webkit-text-size-adjust instead.
@@ -148,6 +149,7 @@
     hideOpenAppNags: true,
     hidePageHeader: true,
     hideComposeButton: true,
+    hideKeywords: [],
     fontScale: 1,
   };
 
@@ -161,6 +163,56 @@
       cachedSettings = Object.assign({}, defaults, raw || {});
     }
     return cachedSettings;
+  }
+
+  var KEYWORD_MAX = 40;
+  var KEYWORD_MAX_LEN = 80;
+  var keywordSource = null;
+  var keywordPatterns = [];
+
+  function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function compileKeyword(phrase) {
+    var parts = phrase.split(/\s+/);
+    var body = "";
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      if (body) body += "\\s+";
+      body += escapeRegExp(parts[i]);
+    }
+    if (!body) return null;
+    try {
+      // Letter/digit boundaries: "cat" matches "the cat." and not "category".
+      return new RegExp(
+        "(?<![\\p{L}\\p{N}])(?:" + body + ")(?![\\p{L}\\p{N}])",
+        "iu"
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function keywordPatternsFor(settings) {
+    var raw = settings && settings.hideKeywords;
+    if (raw === keywordSource && keywordSource !== null) return keywordPatterns;
+    keywordSource = raw || null;
+    keywordPatterns = [];
+    if (!raw || !raw.length) return keywordPatterns;
+    var seen = {};
+    var limit = Math.min(raw.length, KEYWORD_MAX);
+    for (var i = 0; i < limit; i++) {
+      if (typeof raw[i] !== "string") continue;
+      var phrase = raw[i].replace(/\s+/g, " ").trim();
+      if (!phrase || phrase.length > KEYWORD_MAX_LEN) continue;
+      var key = phrase.toLowerCase();
+      if (seen[key]) continue;
+      seen[key] = true;
+      var re = compileKeyword(phrase);
+      if (re) keywordPatterns.push(re);
+    }
+    return keywordPatterns;
   }
 
   function isHomePath() {
@@ -802,6 +854,88 @@
     for (var i = 0; i < cells.length; i++) {
       if (cells[i].getAttribute("data-mt-robin-hide") === "1") continue;
       if (cellLooksLikeLivePromo(cells[i])) markRobinHide(cells[i]);
+    }
+  }
+
+  function focalStatusId() {
+    var m = /\/status\/(\d+)/.exec(location.pathname || "");
+    return m ? m[1] : "";
+  }
+
+  function unmarkKeywordHide(el) {
+    if (!el || el.getAttribute("data-mt-keyword-hide") !== "1") return;
+    el.removeAttribute("data-mt-keyword-hide");
+    if (el.getAttribute("data-mt-robin-hide") === "1") return;
+    el.style.removeProperty("display");
+  }
+
+  function markKeywordHide(el) {
+    if (!el) return;
+    el.setAttribute("data-mt-keyword-hide", "1");
+    el.style.setProperty("display", "none", "important");
+  }
+
+  function cellTweetBlob(cell) {
+    if (!cell || !cell.querySelectorAll) return "";
+    var nodes = cell.querySelectorAll('[data-testid="tweetText"]');
+    if (!nodes.length) return "";
+    var out = "";
+    for (var i = 0; i < nodes.length; i++) {
+      out += "\n" + (nodes[i].textContent || "");
+    }
+    return out;
+  }
+
+  function cellIsFocalStatus(cell) {
+    var focal = focalStatusId();
+    if (!focal || !cell || !cell.querySelector) return false;
+    var article =
+      cell.matches && cell.matches('article[data-testid="tweet"]')
+        ? cell
+        : cell.querySelector('article[data-testid="tweet"]');
+    if (!article) return false;
+    return statusIdFromArticle(article) === focal;
+  }
+
+  function textHitsKeyword(text, patterns) {
+    for (var i = 0; i < patterns.length; i++) {
+      var re = patterns[i];
+      re.lastIndex = 0;
+      try {
+        if (re.test(text)) return true;
+      } catch (e) {}
+    }
+    return false;
+  }
+
+  function hideKeywordPosts(root) {
+    var patterns = keywordPatternsFor(currentSettings());
+    var scope = root && root.querySelectorAll ? root : document;
+    var cells;
+    if (scope.getAttribute && scope.getAttribute("data-testid") === "cellInnerDiv") {
+      cells = [scope];
+    } else {
+      cells = scope.querySelectorAll('[data-testid="cellInnerDiv"]');
+    }
+    if (!patterns.length) {
+      if (scope.getAttribute && scope.getAttribute("data-mt-keyword-hide") === "1") {
+        unmarkKeywordHide(scope);
+      }
+      var hidden = scope.querySelectorAll
+        ? scope.querySelectorAll("[data-mt-keyword-hide]")
+        : [];
+      for (var h = 0; h < hidden.length; h++) unmarkKeywordHide(hidden[h]);
+      return;
+    }
+    for (var i = 0; i < cells.length; i++) {
+      var cell = cells[i];
+      if (cellIsFocalStatus(cell)) {
+        unmarkKeywordHide(cell);
+        continue;
+      }
+      var text = cellTweetBlob(cell);
+      if (text && textHitsKeyword(text, patterns)) markKeywordHide(cell);
+      else unmarkKeywordHide(cell);
     }
   }
 
@@ -1549,6 +1683,7 @@
       hideOpenAppNags();
       hideWhoToFollowBlocks(document);
       hideLiveContentBlocks(document);
+      hideKeywordPosts(document);
       hidePageHeaderFallback();
       hideComposeButtonFallback();
       var allCells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
@@ -1571,6 +1706,7 @@
         labelRepostTimes(n);
         hideWhoToFollowBlocks(n);
         hideLiveContentBlocks(n);
+        hideKeywordPosts(n);
       }
       if (work.length > limit) {
         for (var k = limit; k < work.length; k++) rememberPending(work[k]);
@@ -1716,6 +1852,12 @@
     chromePassHref = "";
     schedule();
   }
+
+  window.__ROBIN_ON_SETTINGS__ = function () {
+    keywordSource = null;
+    needsFullPass = true;
+    schedule();
+  };
 
   observeFeed();
 

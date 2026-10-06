@@ -43,6 +43,10 @@
     <string name="filter_show_live_content">Show live content</string>
     <string name="filter_hide_who_to_follow">Hide Who to follow</string>
     <string name="filter_hide_open_app">Hide open-in-app prompts</string>
+    <string name="filter_hide_keywords">Hide keywords</string>
+    <string name="filter_keyword_hint">Keyword or phrase</string>
+    <string name="filter_keyword_add">Add</string>
+    <string name="filter_keyword_remove">Remove %1$s</string>
     <string name="benchmark_title">Performance Benchmark</string>
     <string name="benchmark_initial_load">Initial Load Time</string>
     <string name="benchmark_scroll_completion">Scroll Render Settle</string>

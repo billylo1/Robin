@@ -31,8 +31,40 @@ struct FilterSettings: Equatable, Sendable {
     var hidePageHeader: Bool = true
     /// Hide the floating / side-nav compose (post) button.
     var hideComposeButton: Bool = true
+    /// Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`.
+    var hideKeywords: [String] = []
+
+    static let keywordMaxCount = 40
+    static let keywordMaxLength = 80
 
     static let `default` = FilterSettings()
+
+    /// Trim, collapse whitespace, drop blanks and over-long phrases, dedupe ignoring case.
+    static func normalizedKeywords(_ raw: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for item in raw {
+            if out.count >= keywordMaxCount { break }
+            let phrase = item.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if phrase.isEmpty || phrase.count > keywordMaxLength { continue }
+            let key = phrase.lowercased()
+            if seen.contains(key) { continue }
+            seen.insert(key)
+            out.append(phrase)
+        }
+        return out
+    }
+
+    /// Nil when the phrase is blank, too long, a duplicate, or the list is full.
+    static func addingKeyword(_ existing: [String], _ addition: String) -> [String]? {
+        let phrase = addition.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        if phrase.isEmpty || phrase.count > keywordMaxLength { return nil }
+        if existing.count >= keywordMaxCount { return nil }
+        if existing.contains(where: { $0.caseInsensitiveCompare(phrase) == .orderedSame }) {
+            return nil
+        }
+        return existing + [phrase]
+    }
 
     /// Home feed mode for Settings UI (default: Following by time).
     var homeFeedMode: HomeFeedMode {
@@ -55,8 +87,40 @@ struct FilterSettings: Equatable, Sendable {
 
     /// JSON object literal for embedding in injected JavaScript.
     func toJSONObjectLiteral(fontScale: Double = 1) -> String {
+        let keywords = hideKeywords.map(Self.jsonStringLiteral).joined(separator: ",")
+        return """
+        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideComposeButton":\(hideComposeButton),"hideKeywords":[\(keywords)],"fontScale":\(fontScale)}
         """
-        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideComposeButton":\(hideComposeButton),"fontScale":\(fontScale)}
-        """
+    }
+
+    /// JS string literal. U+2028/U+2029 are line terminators in JavaScript source.
+    private static func jsonStringLiteral(_ raw: String) -> String {
+        var out = "\""
+        for scalar in raw.unicodeScalars {
+            switch scalar {
+            case "\\":
+                out += "\\\\"
+            case "\"":
+                out += "\\\""
+            case "\n":
+                out += "\\n"
+            case "\r":
+                out += "\\r"
+            case "\t":
+                out += "\\t"
+            case "\u{2028}":
+                out += "\\u2028"
+            case "\u{2029}":
+                out += "\\u2029"
+            default:
+                if scalar.value < 0x20 {
+                    out += String(format: "\\u%04x", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        out += "\""
+        return out
     }
 }

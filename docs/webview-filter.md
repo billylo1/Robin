@@ -65,6 +65,8 @@ Opening a post snapshots the feed scroll offset, and the tapped row’s distance
 
 All filter toggles default **on**; page header hide **on**; compose button hide **on**; live / Spaces / broadcast promo hide **on** (`hideLiveContent`). Home feed defaults to **Following (by time)** (`forceFollowing`, `hideForYouTab`, `preferLatest` all true). Settings offers two modes: Following (by time) and For You (clears `forceFollowing` / `hideForYouTab`; `preferLatest` is Following-only). Font scale defaults to **1.0** (100%), max **2.0**.
 
+`hideKeywords` is a device-local list of words and phrases (default empty, so nothing extra is hidden). A post is hidden when its text includes one as a whole word or phrase: `cat` hides `the cat.` and does not hide `category`, `cats`, or `bobcat`. The status permalink you opened stays visible; matching replies still hide.
+
 On home, `hideLiveContent` adds `mt-hide-live` on `html` and hides live / broadcast / Spaces / event promo chips (including magenta “+N · Event” banners inside tweets) plus dedicated live promo rows, while leaving normal tweet bodies intact.
 
 `preferLatest` applies only in **Following (by time)** mode. It watches the home feed request X sends. Following → Popular and Following → Recent both call the `HomeLatestTimeline` GraphQL op; only the `enableRanking` variable differs (`true` = Popular, `false` = Recent). `HomeTimeline` (For you) counts as ranked. When the feed is ranked, it follows Minimal Twitter’s click chain: open the Following sort control and choose **Recent** (desktop: Timeline options / Top Tweets). Until an unranked request is seen, `data-mt-defer-feed-chrome` keeps `TopNavBar` visible despite `hidePageHeader`.

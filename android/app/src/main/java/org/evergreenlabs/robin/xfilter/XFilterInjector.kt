@@ -162,6 +162,7 @@ object XFilterInjector {
               if (scale === 1) root.style.removeProperty('zoom');
               else root.style.zoom = String(scale);
             })();
+            if (typeof window.__ROBIN_ON_SETTINGS__ === 'function') window.__ROBIN_ON_SETTINGS__();
             """.trimIndent(),
             null,
         )

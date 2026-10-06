@@ -14,6 +14,7 @@ final class FilterSettingsStore {
         static let hideOpenAppNags = "xfilter:hideOpenAppNags"
         static let hidePageHeader = "xfilter:hidePageHeader"
         static let hideComposeButton = "xfilter:hideComposeButton"
+        static let hideKeywords = "xfilter:hideKeywords"
     }
 
     private let defaults: UserDefaults
@@ -43,6 +44,7 @@ final class FilterSettingsStore {
         defaults.set(s.hideOpenAppNags, forKey: Keys.hideOpenAppNags)
         defaults.set(s.hidePageHeader, forKey: Keys.hidePageHeader)
         defaults.set(s.hideComposeButton, forKey: Keys.hideComposeButton)
+        defaults.set(s.hideKeywords, forKey: Keys.hideKeywords)
     }
 
     private static func load(from defaults: UserDefaults) -> FilterSettings {
@@ -60,7 +62,10 @@ final class FilterSettingsStore {
             hideLiveContent: bool(Keys.hideLiveContent, fallback: d.hideLiveContent),
             hideOpenAppNags: bool(Keys.hideOpenAppNags, fallback: d.hideOpenAppNags),
             hidePageHeader: bool(Keys.hidePageHeader, fallback: d.hidePageHeader),
-            hideComposeButton: bool(Keys.hideComposeButton, fallback: d.hideComposeButton)
+            hideComposeButton: bool(Keys.hideComposeButton, fallback: d.hideComposeButton),
+            hideKeywords: FilterSettings.normalizedKeywords(
+                defaults.stringArray(forKey: Keys.hideKeywords) ?? []
+            )
         )
     }
 }
