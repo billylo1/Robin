@@ -268,11 +268,14 @@
   }
 
   function clearRobinHides() {
-    var nodes = document.querySelectorAll("[data-mt-robin-hide]");
+    var nodes = document.querySelectorAll(
+      "[data-mt-robin-hide], [data-mt-robin-posted-pill]"
+    );
     for (var i = 0; i < nodes.length; i++) {
       var el = nodes[i];
       el.style.removeProperty("display");
       el.removeAttribute("data-mt-robin-hide");
+      el.removeAttribute("data-mt-robin-posted-pill");
     }
   }
 
@@ -1296,6 +1299,129 @@
     );
   }
 
+  /**
+   * For You facepile: "Alex posted", "Alex, Blair, and Casey posted",
+   * "x, y, z has posted". Not the Following "Show N posts" control.
+   */
+  function namesPostedPillLabel(label) {
+    if (!label) return false;
+    var text = String(label).replace(/\s+/g, " ").trim().toLowerCase();
+    if (!text || text.length > 220) return false;
+    var dot = text.indexOf(". ");
+    if (dot !== -1) text = text.slice(0, dot);
+    if (!text || text.length > 180) return false;
+    if (newPostsLabelMatch(text)) return false;
+    if (/^(show|see)\b/.test(text)) return false;
+    return /^.+\s(?:has\s+|have\s+)?posted$/.test(text);
+  }
+
+  function onForYouFeed() {
+    if (!isHomePath()) return false;
+    var tabs = findHomeTabs();
+    if (tabs.forYou && isTabSelected(tabs.forYou)) return true;
+    if (tabs.following && isTabSelected(tabs.following)) return false;
+    return !currentSettings().forceFollowing;
+  }
+
+  function isSafePostedPillTarget(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    var tid = el.getAttribute && el.getAttribute("data-testid");
+    if (
+      tid === "primaryColumn" ||
+      tid === "sidebarColumn" ||
+      tid === "TopNavBar"
+    ) {
+      return false;
+    }
+    if (el.id === "layers") return false;
+    if (el.querySelector && el.querySelector('article[data-testid="tweet"]')) {
+      return false;
+    }
+    return true;
+  }
+
+  function postedPillTarget(el) {
+    var cell = el.closest && el.closest('[data-testid="cellInnerDiv"]');
+    if (cell && isSafePostedPillTarget(cell)) {
+      var cellLabel = cell.getAttribute("aria-label") || boundedText(cell, 180);
+      if (namesPostedPillLabel(cellLabel)) return cell;
+    }
+    var status = el.closest && el.closest('[role="status"]');
+    if (status && status !== el && isSafePostedPillTarget(status)) {
+      var statusLabel = status.getAttribute("aria-label") || boundedText(status, 180);
+      if (namesPostedPillLabel(statusLabel)) return status;
+    }
+    // Climb only through a dedicated overlay. A relative parent often wraps
+    // both this pill and the timeline; hiding that would blank the feed.
+    var node = el;
+    var parent = el.parentElement;
+    for (var depth = 0; depth < 4 && parent && isSafePostedPillTarget(parent); depth++) {
+      if (
+        parent.querySelector(
+          '[data-testid="cellInnerDiv"], [role="region"], [role="tab"]'
+        )
+      ) {
+        break;
+      }
+      var pos = "";
+      try {
+        pos = window.getComputedStyle(parent).position || "";
+      } catch (e) {}
+      var parentLabel = parent.getAttribute("aria-label") || boundedText(parent, 180);
+      var overlay = pos === "absolute" || pos === "fixed";
+      if (overlay || (namesPostedPillLabel(parentLabel) && parent.childElementCount <= 2)) {
+        node = parent;
+        parent = parent.parentElement;
+        continue;
+      }
+      break;
+    }
+    return isSafePostedPillTarget(node) ? node : null;
+  }
+
+  function restorePostedPills() {
+    var nodes = document.querySelectorAll("[data-mt-robin-posted-pill]");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      el.style.removeProperty("display");
+      el.removeAttribute("data-mt-robin-hide");
+      el.removeAttribute("data-mt-robin-posted-pill");
+    }
+  }
+
+  function hideNamesPostedPill() {
+    if (!isHomePath() || !onForYouFeed()) {
+      restorePostedPills();
+      return;
+    }
+    var scopes = [];
+    var col = document.querySelector('[data-testid="primaryColumn"]');
+    if (col) scopes.push(col);
+    var layers = document.getElementById("layers");
+    if (layers) scopes.push(layers);
+    if (!scopes.length && document.body) scopes.push(document.body);
+    for (var s = 0; s < scopes.length; s++) {
+      var nodes = scopes[s].querySelectorAll(
+        '[role="button"], button, a[role="link"], [role="status"]'
+      );
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (!el || el.getAttribute("data-mt-robin-posted-pill") === "1") continue;
+        if (el.closest && el.closest("[data-mt-robin-posted-pill]")) continue;
+        if (el.closest && el.closest('article[data-testid="tweet"]')) continue;
+        var inCell =
+          el.closest && el.closest('[data-testid="cellInnerDiv"]');
+        if (inCell && inCell.querySelector('article[data-testid="tweet"]')) continue;
+        var label = el.getAttribute("aria-label") || boundedText(el, 180);
+        if (!namesPostedPillLabel(label)) continue;
+        var target = postedPillTarget(el);
+        if (!target) continue;
+        target.setAttribute("data-mt-robin-posted-pill", "1");
+        markRobinHide(target);
+      }
+    }
+  }
+
   function findNewPostsControl() {
     if (!isHomePath()) return null;
     var nodes = document.querySelectorAll(
@@ -1720,6 +1846,7 @@
     }
 
     autoClickNewPostsPill();
+    hideNamesPostedPill();
     maybeRetryWelcome();
     maybeRevealBoot();
   }
