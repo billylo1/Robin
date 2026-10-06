@@ -67,7 +67,7 @@ import org.evergreenlabs.robin.xfilter.HomeFeedMode
 
 /**
  * Settings for the WebView filter path.
- * Text size scales the X WebView (and native chrome via LocalDensity).
+ * Text size scales the X feed only, not this sheet.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

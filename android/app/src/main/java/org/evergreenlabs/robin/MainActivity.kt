@@ -10,12 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.evergreenlabs.robin.ui.RootScreen
 import org.evergreenlabs.robin.ui.theme.RobinTheme
 import java.util.Locale
@@ -58,18 +53,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val userFontScale by AppGraph.fontScale.scale.collectAsStateWithLifecycle()
-            val density = LocalDensity.current
-            CompositionLocalProvider(
-                LocalDensity provides Density(
-                    density = density.density,
-                    fontScale = density.fontScale * userFontScale,
-                ),
-            ) {
-                RobinTheme {
-                    Surface {
-                        RootScreen()
-                    }
+            RobinTheme {
+                Surface {
+                    RootScreen()
                 }
             }
         }

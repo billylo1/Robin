@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Settings for the WebView filter path.
-/// Text size scales the X WebView (and native chrome via mtFont).
+/// Text size scales the X feed only, not this sheet.
 struct InfoSheet: View {
     @Environment(FontScaleStore.self) private var fontScale
     @Environment(FeedRefreshIntervalStore.self) private var feedRefresh
@@ -26,7 +26,7 @@ struct InfoSheet: View {
                 Section("User Interface") {
                     HStack {
                         Text("Text size")
-                            .mtFont(.body)
+                            .font(.body)
                         Spacer()
                         HStack(spacing: 8) {
                             adjustButton(
@@ -38,7 +38,7 @@ struct InfoSheet: View {
                             }
 
                             Text(fontScale.percentLabel)
-                                .mtFont(.subheadline)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                                 .frame(width: Self.valueColumnWidth)
@@ -56,7 +56,7 @@ struct InfoSheet: View {
 
                     HStack {
                         Text("Auto-refresh")
-                            .mtFont(.body)
+                            .font(.body)
                         Spacer()
                         HStack(spacing: 8) {
                             adjustButton(
@@ -68,7 +68,7 @@ struct InfoSheet: View {
                             }
 
                             Text(feedRefresh.label)
-                                .mtFont(.subheadline)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                                 .frame(width: Self.valueColumnWidth)
@@ -125,7 +125,7 @@ struct InfoSheet: View {
                     ForEach(filterStore.settings.hideKeywords, id: \.self) { keyword in
                         HStack {
                             Text(keyword)
-                                .mtFont(.body)
+                                .font(.body)
                             Spacer()
                             Button(role: .destructive) {
                                 filterStore.update { settings in
@@ -149,42 +149,42 @@ struct InfoSheet: View {
 
                     HStack {
                         Text("Initial load")
-                            .mtFont(.body)
+                            .font(.body)
                         Spacer()
                         Text("\(current.initialLoadMs) ms")
-                            .mtFont(.subheadline)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                         if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.initialLoadMs > 0 {
                             let pct = String(format: "%+.1f%%", delta.initialPct)
                             Text("(\(pct))")
-                                .mtFont(.caption)
+                                .font(.caption)
                                 .foregroundStyle(delta.initialPct <= 5.0 ? .green : .red)
                         }
                     }
 
                     HStack {
                         Text("Scroll render settle")
-                            .mtFont(.body)
+                            .font(.body)
                         Spacer()
                         Text("\(current.scrollRenderCompletionMs) ms")
-                            .mtFont(.subheadline)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                         if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.scrollRenderCompletionMs > 0 {
                             let pct = String(format: "%+.1f%%", delta.scrollPct)
                             Text("(\(pct))")
-                                .mtFont(.caption)
+                                .font(.caption)
                                 .foregroundStyle(delta.scrollPct <= 5.0 ? .green : .red)
                         }
                     }
 
                     HStack {
                         Text("Status")
-                            .mtFont(.body)
+                            .font(.body)
                         Spacer()
                         Text(delta.isRegressed ? "Regression" : "Optimal")
-                            .mtFont(.subheadline)
+                            .font(.subheadline)
                             .foregroundStyle(delta.isRegressed ? .red : .green)
                     }
 
@@ -220,18 +220,18 @@ struct InfoSheet: View {
 
                 Section("Credits") {
                     Text("Feed filters adapted from Minimal Theme for Twitter / X by Typefully (MIT).")
-                        .mtFont(.subheadline)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Link("View on GitHub", destination: Self.minimalTwitterURL)
-                        .mtFont(.subheadline)
+                        .font(.subheadline)
                 }
 
                 Section("About") {
                     Text("Version \(AppConfig.versionName) (\(AppConfig.versionCode))")
-                        .mtFont(.caption)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                     Link("Robin on GitHub", destination: Self.robinRepoURL)
-                        .mtFont(.subheadline)
+                        .font(.subheadline)
                 }
 
                 Section {

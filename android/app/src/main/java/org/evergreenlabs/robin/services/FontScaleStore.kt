@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
 
 /**
  * In-app text size preference (mirrors iOS / web `robin:fontScale`).
- * Applied via [LocalDensity] fontScale so Material typography scales together.
+ * Applied only to the X feed WebView, not native Compose chrome.
  */
 class FontScaleStore(
     context: Context,

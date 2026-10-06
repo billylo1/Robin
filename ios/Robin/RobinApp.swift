@@ -17,7 +17,6 @@ struct RobinApp: App {
                 .environment(fontScale)
                 .environment(feedRefreshInterval)
                 .environment(filterSettings)
-                .environment(\.fontScale, fontScale.scale)
                 .onKeyPress(keys: [.init("="), .init("+")]) { press in
                     guard press.modifiers.contains(.command) else { return .ignored }
                     fontScale.bump(FontScale.step)
