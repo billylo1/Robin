@@ -33,6 +33,9 @@ a[href*="quick_promote_web"] {
  */
 html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) [data-testid="TopNavBar"],
 html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) header[role="banner"],
+/* Home tabs sit in the timeline column, not TopNavBar. Leaving them in flow
+   until the deferred JS hide shifts the feed by about that row. */
+html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) div[data-testid="ScrollSnap-List"][role="tablist"],
 html.mt-hide-page-header[data-mt-home="1"] nav[aria-label="Primary"],
 html.mt-hide-page-header[data-mt-home="1"] [data-testid="sidebarColumn"],
 html.mt-hide-page-header[data-mt-home="1"] [aria-label="Account menu"] {

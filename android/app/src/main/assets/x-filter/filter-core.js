@@ -1722,6 +1722,7 @@
     autoClickNewPostsPill();
     maybeRetryWelcome();
     maybeRevealBoot();
+    notePinChrome();
   }
 
   document.addEventListener("click", onUserTabClick, true);
@@ -1837,7 +1838,17 @@
     clearTimeout(scrollIdleTimer);
     scrollIdleTimer = setTimeout(function () {
       scrolling = false;
-      if (lastFeedScroller && Date.now() >= freezeUntil) {
+      // The tap snapshot has to survive the open post (its scroller is not
+      // the feed) and the pin itself. Replacing it with scrollY here is what
+      // left the feed short by the home-tab row: that row is removed on the
+      // tick this idle schedules, after the anchor was already discarded.
+      var pinning = pinUntil && Date.now() < pinUntil;
+      if (
+        !pinning &&
+        isHomePath() &&
+        lastFeedScroller &&
+        Date.now() >= freezeUntil
+      ) {
         savedScrollY = readScrollerY(lastFeedScroller);
         savedAnchor = null;
       }
@@ -1864,6 +1875,10 @@
   // Tapping a post scrolls that row toward the top before X records history.
   // Back then restores the shifted position, so the feed lands further down.
   // Snapshot the viewport at pointerdown and pin it again when /home returns.
+  // Home chrome (Following / For You) is shown again on the status page and
+  // removed only after scroll goes idle. That removal is about two lines
+  // tall; pinning must still be active when it happens or the posts sit
+  // that much higher than where the tap was.
   var savedScrollY = null;
   var savedAnchor = null;
   var lastFeedScroller = null;
@@ -1871,6 +1886,8 @@
   var freezeUntil = 0;
   var pinUntil = 0;
   var pinLoopOn = false;
+  var pinChromePending = false;
+  var pinStableSince = 0;
   var applyingPin = false;
   var lastPinTop = null;
   var lastNudgeMoved = false;
@@ -2035,11 +2052,23 @@
     var nodes = document.querySelectorAll(
       '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
     );
+    // Status back-navigation can leave a second copy of the same post.
+    // Prefer the visible one closest to where the tap was.
+    var best = null;
+    var bestDist = 1e15;
+    var wantTop = savedAnchor ? savedAnchor.top : 0;
     for (var i = 0; i < nodes.length; i++) {
-      if (statusIdFromArticle(nodes[i]) === statusId) {
-        pinArticle = nodes[i];
-        return pinArticle;
+      if (statusIdFromArticle(nodes[i]) !== statusId) continue;
+      if (nodes[i].offsetHeight < 1) continue;
+      var dist = Math.abs(nodes[i].getBoundingClientRect().top - wantTop);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = nodes[i];
       }
+    }
+    if (best) {
+      pinArticle = best;
+      return pinArticle;
     }
     return null;
   }
@@ -2086,27 +2115,66 @@
     }
   }
 
+  function feedChromeReadyForPin() {
+    if (!isHomePath()) return false;
+    if (
+      !document.querySelector(
+        '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
+      )
+    ) {
+      return false;
+    }
+    if (!currentSettings().hidePageHeader) return true;
+    var root = document.documentElement;
+    if (root && root.getAttribute("data-mt-defer-feed-chrome") === "1") return true;
+    var bar = document.querySelector('[data-testid="TopNavBar"]');
+    if (bar && bar.offsetHeight > 0) return false;
+    var tablist = document.querySelector(
+      "div[data-testid='ScrollSnap-List'][role='tablist']"
+    );
+    if (tablist && tablist.offsetHeight > 0) return false;
+    return true;
+  }
+
+  // Called at the end of a filter tick. The tick is what removes the home
+  // tab row; the pin has to re-measure after that, not before.
+  function notePinChrome() {
+    if (!pinChromePending || !feedChromeReadyForPin()) return;
+    pinChromePending = false;
+    pinStableSince = 0;
+    lastPinTop = null;
+    if (pinUntil && Date.now() < pinUntil) {
+      pinUntil = Math.max(pinUntil, Date.now() + 800);
+    }
+  }
+
   function beginFeedPin() {
     if (savedScrollY == null && !savedAnchor) return;
     pinUntil = Date.now() + 2000;
     pinArticle = null;
     lastPinTop = null;
     lastNudgeMoved = false;
+    pinStableSince = 0;
     if (pinLoopOn) return;
     pinLoopOn = true;
-    var stable = 0;
     var started = Date.now();
     function step() {
       if (!pinUntil || Date.now() >= pinUntil || !isHomePath()) {
         pinLoopOn = false;
         pinUntil = 0;
+        pinChromePending = false;
         return;
       }
-      if (pinFeedStep()) stable++;
-      else stable = 0;
-      // X's virtualizer restores scroll on a short delay. Wait it out, then
-      // stop once the tapped row has held its original viewport position.
-      if (stable >= 8 && Date.now() - started > 700) {
+      if (pinFeedStep()) {
+        if (!pinStableSince) pinStableSince = Date.now();
+      } else {
+        pinStableSince = 0;
+      }
+      // X restores history a moment later, then the idle tick strips the
+      // home tab row. Hold until that strip is gone and the row has stayed
+      // put, otherwise the feed settles a tab-row too high.
+      var held = pinStableSince && Date.now() - pinStableSince > 400;
+      if (held && !pinChromePending && Date.now() - started > 700) {
         pinLoopOn = false;
         pinUntil = 0;
         return;
@@ -2126,6 +2194,11 @@
     // the status page that just unmounted.
     if (hrefIsHome(prevHref) || !hrefIsHome(nextHref)) return;
     freezeUntil = 0;
+    // CSS hides TopNavBar / the home tab list as soon as these flags are set.
+    // Doing it before the pin measures, instead of on the deferred tick.
+    syncPageHeaderFlags();
+    if (savedScrollY == null && !savedAnchor) return;
+    pinChromePending = true;
     beginFeedPin();
   }
 

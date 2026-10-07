@@ -60,7 +60,7 @@ Title tap while scrolled down still only scrolls to top. The toolbar Refresh but
 
 `hidePageHeaderFallback` / `hideComposeButtonFallback` mark nodes with `data-mt-robin-hide` when applying inline `display: none`. On SPA leave-home, `clearRobinHides()` removes those styles so a shared timeline ancestor is not left blank after back from a post.
 
-Opening a post snapshots the feed scroll offset, and the tapped row’s distance from the top of the viewport, on pointer-down — before the tap scrolls that row upward. Returning to home pins that snapshot for a short time so history restoration cannot leave the feed further down. A real drag, wheel, or key cancels the pin.
+Opening a post snapshots the feed scroll offset, and the tapped row’s distance from the top of the viewport, on pointer-down — before the tap scrolls that row upward. Returning to home puts the header-hide flags back immediately and pins that snapshot until the home tab row is gone again. Scroll-idle used to replace the snapshot with a raw scroll offset before that row was removed, so the posts landed about one tab-row higher. Scrolling the open post does not discard the snapshot. A real drag, wheel, or key on the feed cancels the pin.
 ## Defaults
 
 All filter toggles default **on**; page header hide **on**; compose button hide **on**; live / Spaces / broadcast promo hide **on** (`hideLiveContent`). Home feed defaults to **Following (by time)** (`forceFollowing`, `hideForYouTab`, `preferLatest` all true). Settings offers two modes: Following (by time) and For You (clears `forceFollowing` / `hideForYouTab`; `preferLatest` is Following-only). Font scale defaults to **1.0** (100%), max **2.0**.
