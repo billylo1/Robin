@@ -608,7 +608,7 @@ struct XWebFeedView: View {
 
     /// Feed type / ordering / content filters that need a home reload to fully apply.
     private static func feedReloadFingerprint(_ s: FilterSettings) -> (
-        Bool, Bool, Bool, Bool
+        Bool, Bool, Bool
     ) {
         (s.forceFollowing, s.preferLatest, s.hideLiveContent)
     }
