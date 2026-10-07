@@ -25,8 +25,6 @@ data class FilterSettings(
     val hideOpenAppNags: Boolean = true,
     /** Hide X avatar / logo / Subscribe / Following tabs on home (native bar replaces them). */
     val hidePageHeader: Boolean = true,
-    /** Hide the floating / side-nav compose (post) button. */
-    val hideComposeButton: Boolean = true,
     /** Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`. */
     val hideKeywords: List<String> = emptyList(),
 ) {
@@ -60,7 +58,6 @@ data class FilterSettings(
         append("\"hideLiveContent\":").append(hideLiveContent).append(',')
         append("\"hideOpenAppNags\":").append(hideOpenAppNags).append(',')
         append("\"hidePageHeader\":").append(hidePageHeader).append(',')
-        append("\"hideComposeButton\":").append(hideComposeButton).append(',')
         append("\"hideKeywords\":[")
         hideKeywords.forEachIndexed { index, phrase ->
             if (index > 0) append(',')

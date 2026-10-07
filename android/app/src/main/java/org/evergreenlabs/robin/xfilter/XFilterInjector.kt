@@ -71,7 +71,7 @@ object XFilterInjector {
                   }
                   var cfg = window.__ROBIN_SETTINGS__ || {};
                   root.classList.toggle('mt-hide-page-header', !!cfg.hidePageHeader);
-                  root.classList.toggle('mt-hide-compose', !!cfg.hideComposeButton);
+                  root.classList.add('mt-hide-compose');
                   var p = location.pathname || '';
                   var home = p === '/' || p === '/home' || p.indexOf('/home') === 0;
                   if (home) root.setAttribute('data-mt-home', '1');
@@ -150,7 +150,7 @@ object XFilterInjector {
               if (home) root.setAttribute('data-mt-home', '1');
               else root.removeAttribute('data-mt-home');
               root.classList.toggle('mt-hide-page-header', !!cfg.hidePageHeader);
-              root.classList.toggle('mt-hide-compose', !!cfg.hideComposeButton);
+              root.classList.add('mt-hide-compose');
               root.classList.toggle('mt-hide-live', !!cfg.hideLiveContent);
               if (home && cfg.hidePageHeader && cfg.forceFollowing && cfg.preferLatest && !window.__ROBIN_LATEST_OK__) {
                 root.setAttribute('data-mt-defer-feed-chrome', '1');

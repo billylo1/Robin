@@ -41,6 +41,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,7 +58,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
@@ -115,6 +116,7 @@ import java.util.Locale
 
 private const val TAG = "XWebFeed"
 private const val X_HOME = "https://x.com/home"
+private const val X_COMPOSE = "https://x.com/compose/post"
 private const val NEAR_TOP_PX = 80
 private const val SCROLL_TOP_BUTTON_PX = 400
 private const val WARM_CROSSFADE_MS = 450
@@ -300,7 +302,6 @@ private fun feedReloadFingerprint(s: FilterSettings): List<Boolean> = listOf(
     s.forceFollowing,
     s.preferLatest,
     s.hideLiveContent,
-    s.hideComposeButton,
 )
 
 private fun isXHost(url: String?): Boolean {
@@ -605,8 +606,6 @@ fun XWebFeedScreen(
     val welcomeRetryHolder = remember { mutableStateOf<(() -> Unit)?>(null) }
     val revealBootHolder = remember { mutableStateOf<(() -> Unit)?>(null) }
     val bootNonceGate = remember { BootNonceGate() }
-
-    val showBackButton = canGoBack && !isFeedHome(pageUrl)
 
     fun scrollWebToTop() {
         val wv = webViewRef ?: return
@@ -915,18 +914,6 @@ fun XWebFeedScreen(
                     .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (showBackButton) {
-                    IconButton(
-                        onClick = { webViewRef?.goBack() },
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = stringResource(R.string.back),
-                            tint = headerAccent,
-                        )
-                    }
-                }
                 TextButton(
                     onClick = { onTitleTap() },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
@@ -954,41 +941,60 @@ fun XWebFeedScreen(
                         )
                     }
                 }
-                if (showScrollTop) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (showScrollTop) {
+                        IconButton(
+                            onClick = { scrollWebToTop() },
+                            modifier = Modifier.size(40.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.KeyboardArrowUp,
+                                contentDescription = stringResource(R.string.back_to_top),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
                     IconButton(
-                        onClick = { scrollWebToTop() },
+                        onClick = {
+                            Analytics.track("compose_opened")
+                            noteUserInteraction()
+                            webViewRef?.loadUrl(X_COMPOSE)
+                        },
                         modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.KeyboardArrowUp,
-                            contentDescription = stringResource(R.string.back_to_top),
+                            imageVector = Icons.Outlined.Edit,
+                            contentDescription = stringResource(R.string.new_post),
                             tint = MaterialTheme.colorScheme.onSurface,
                         )
                     }
-                }
-                IconButton(
-                    onClick = { hardReloadFeed(warm = !showBootCover) },
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Refresh,
-                        contentDescription = stringResource(R.string.refresh),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        Analytics.track("settings_opened")
-                        filterSettingsWhenInfoOpened = filterSettings
-                        chrome.setInfoPresented(true)
-                    },
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Settings,
-                        contentDescription = stringResource(R.string.settings),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
+                    IconButton(
+                        onClick = { hardReloadFeed(warm = !showBootCover) },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Refresh,
+                            contentDescription = stringResource(R.string.refresh),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            Analytics.track("settings_opened")
+                            filterSettingsWhenInfoOpened = filterSettings
+                            chrome.setInfoPresented(true)
+                        },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Settings,
+                            contentDescription = stringResource(R.string.settings),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
             }
         }

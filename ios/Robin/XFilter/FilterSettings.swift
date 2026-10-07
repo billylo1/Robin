@@ -29,8 +29,6 @@ struct FilterSettings: Equatable, Sendable {
     var hideOpenAppNags: Bool = true
     /// Hide X avatar / logo / Subscribe / Following tabs on home (native bar replaces them).
     var hidePageHeader: Bool = true
-    /// Hide the floating / side-nav compose (post) button.
-    var hideComposeButton: Bool = true
     /// Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`.
     var hideKeywords: [String] = []
 
@@ -89,7 +87,7 @@ struct FilterSettings: Equatable, Sendable {
     func toJSONObjectLiteral(fontScale: Double = 1) -> String {
         let keywords = hideKeywords.map(Self.jsonStringLiteral).joined(separator: ",")
         return """
-        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideComposeButton":\(hideComposeButton),"hideKeywords":[\(keywords)],"fontScale":\(fontScale)}
+        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideKeywords":[\(keywords)],"fontScale":\(fontScale)}
         """
     }
 

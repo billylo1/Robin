@@ -119,7 +119,7 @@ html.mt-hide-live[data-mt-home="1"] a[href*="/i/events/"] {
   display: none !important;
 }
 
-/* Floating / side-nav compose button (toggle: hideComposeButton) */
+/* Floating / side-nav compose (always; native header New post replaces it) */
 html.mt-hide-compose a[data-testid="SideNav_NewTweet_Button"],
 html.mt-hide-compose [data-testid="FloatingActionButton_compose"],
 html.mt-hide-compose a[href="/compose/post"],

@@ -14,7 +14,7 @@
  *   hideLiveContent: boolean (default true) — hide live / Spaces / broadcast promos on home
  *   hideOpenAppNags: boolean (default true)
  *   hidePageHeader: boolean (default true) — hide X avatar/logo/Subscribe/tabs on home
- *   hideComposeButton: boolean (default true) — hide floating / side-nav compose button
+ *   (X compose FAB is always hidden; hosts use a native New post control)
  *   hideKeywords: string[] (default []) — whole-word / phrase hides (cat ≠ category)
  *   fontScale: number (default 1) — page zoom for text size
  * iOS host sets window.__ROBIN_TEXT_SIZE_ADJUST__: WKWebView text ignores html
@@ -148,7 +148,6 @@
     hideLiveContent: true,
     hideOpenAppNags: true,
     hidePageHeader: true,
-    hideComposeButton: true,
     hideKeywords: [],
     fontScale: 1,
   };
@@ -950,7 +949,7 @@
     if (home) root.setAttribute("data-mt-home", "1");
     else root.removeAttribute("data-mt-home");
     root.classList.toggle("mt-hide-page-header", !!settings.hidePageHeader);
-    root.classList.toggle("mt-hide-compose", !!settings.hideComposeButton);
+    root.classList.add("mt-hide-compose");
     root.classList.toggle("mt-hide-live", !!settings.hideLiveContent);
     // Keep TopNavBar visible until X is confirmed loading HomeLatestTimeline.
     var deferChrome =
@@ -964,7 +963,6 @@
   }
 
   function hideComposeButtonFallback() {
-    if (!currentSettings().hideComposeButton) return;
     var selectors = [
       'a[data-testid="SideNav_NewTweet_Button"]',
       'a[href="/compose/post"]',

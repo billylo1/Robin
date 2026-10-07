@@ -229,7 +229,6 @@ async function runBenchmark(browserType, label, options = {}) {
       hideLiveContent: true,
       hideOpenAppNags: true,
       hidePageHeader: true,
-      hideComposeButton: true,
       fontScale: 1
     };
     window.__ROBIN_TEXT_SIZE_ADJUST__ = true;

@@ -27,6 +27,7 @@ private func openInAppBrowser(_ url: URL, from webView: WKWebView?) {
 }
 
 private let xHomeURL = URL(string: "https://x.com/home")!
+private let xComposeURL = URL(string: "https://x.com/compose/post")!
 
 /// Home / Following timeline — native back should not return to login from here.
 private func isFeedHome(_ url: URL?) -> Bool {
@@ -124,7 +125,6 @@ struct XWebFeedView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var webView: WKWebView?
-    @State private var canGoBack = false
     @State private var pageURL: URL?
     @State private var progress: Double = 0
     @State private var showScrollTop = false
@@ -166,11 +166,6 @@ struct XWebFeedView: View {
     private static let robinRedLight = Color(red: 0xFF / 255, green: 0x6B / 255, blue: 0x45 / 255)
     /// Slightly longer than filter-core's 5s hard reveal.
     private static let bootCoverTimeoutNs: UInt64 = 5_500_000_000
-
-    /// Hide back on the Following feed so login stays out of the stack UI.
-    private var showBackButton: Bool {
-        canGoBack && !isFeedHome(pageURL)
-    }
 
     private var headerAccent: Color {
         colorScheme == .dark ? Self.robinRedLight : Self.robinRed
@@ -237,7 +232,6 @@ struct XWebFeedView: View {
             ZStack {
                 XWebViewRepresentable(
                     webView: $webView,
-                    canGoBack: $canGoBack,
                     pageURL: $pageURL,
                     progress: $progress,
                     showBootCover: $showBootCover,
@@ -384,16 +378,7 @@ struct XWebFeedView: View {
     }
 
     private var feedHeader: some View {
-        HStack(spacing: 8) {
-            if showBackButton {
-                Button {
-                    webView?.goBack()
-                } label: {
-                    Image(systemName: "chevron.backward")
-                        .foregroundStyle(headerAccent)
-                }
-                .accessibilityLabel("Back")
-            }
+        HStack(spacing: 16) {
             HStack(spacing: 8) {
                 Image("RobinMark")
                     .resizable()
@@ -423,6 +408,11 @@ struct XWebFeedView: View {
                 .accessibilityLabel("Back to top")
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
+            Button(action: openCompose) {
+                Image(systemName: "square.and.pencil")
+                    .foregroundStyle(.primary)
+            }
+            .accessibilityLabel("New post")
             Button {
                 hardReloadFeed(warm: !showBootCover)
             } label: {
@@ -461,6 +451,13 @@ struct XWebFeedView: View {
         } else {
             scrollToTop()
         }
+    }
+
+    private func openCompose() {
+        guard let webView else { return }
+        Analytics.track("compose_opened")
+        noteUserInteraction()
+        webView.load(URLRequest(url: xComposeURL))
     }
 
     /// Automatic refreshes wait until the user has left the feed alone.
@@ -613,7 +610,7 @@ struct XWebFeedView: View {
     private static func feedReloadFingerprint(_ s: FilterSettings) -> (
         Bool, Bool, Bool, Bool
     ) {
-        (s.forceFollowing, s.preferLatest, s.hideLiveContent, s.hideComposeButton)
+        (s.forceFollowing, s.preferLatest, s.hideLiveContent)
     }
 
     private func flushPendingFeedSettingsReloadIfNeeded() {
@@ -658,7 +655,6 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         + "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 
     @Binding var webView: WKWebView?
-    @Binding var canGoBack: Bool
     @Binding var pageURL: URL?
     @Binding var progress: Double
     @Binding var showBootCover: Bool
@@ -672,7 +668,6 @@ private struct XWebViewRepresentable: UIViewRepresentable {
 
     func makeCoordinator() -> XWebViewCoordinator {
         XWebViewCoordinator(
-            canGoBack: $canGoBack,
             pageURL: $pageURL,
             progress: $progress,
             showBootCover: $showBootCover,
@@ -769,7 +764,6 @@ private struct XWebViewRepresentable: UIViewRepresentable {
 
 @MainActor
 final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-    @Binding var canGoBack: Bool
     @Binding var pageURL: URL?
     @Binding var progress: Double
     @Binding var showBootCover: Bool
@@ -802,7 +796,6 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     private weak var pendingAuthPopupSource: WKWebView?
 
     init(
-        canGoBack: Binding<Bool>,
         pageURL: Binding<URL?>,
         progress: Binding<Double>,
         showBootCover: Binding<Bool>,
@@ -814,7 +807,6 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         onInteract: @escaping () -> Void,
         onWelcomeRetry: @escaping () -> Void
     ) {
-        _canGoBack = canGoBack
         _pageURL = pageURL
         _progress = progress
         _showBootCover = showBootCover
@@ -937,9 +929,8 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         // Ignore popup navigations for the main chrome bindings.
         if webView === authPopupWebView { return }
         pageURL = webView.url
-        // On the Following feed, treat history as empty for the native back control
-        // (login may still sit in WKBackForwardList).
-        canGoBack = webView.canGoBack && !isFeedHome(webView.url)
+        // On the Following feed, disable edge-swipe back so login history
+        // sitting in WKBackForwardList cannot steal the gesture.
         webView.allowsBackForwardNavigationGestures = !isFeedHome(webView.url)
     }
 

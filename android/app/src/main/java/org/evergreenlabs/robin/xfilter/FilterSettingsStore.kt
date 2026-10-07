@@ -25,7 +25,6 @@ class FilterSettingsStore(private val context: Context) {
         val hideLiveContent = booleanPreferencesKey("hideLiveContent")
         val hideOpenAppNags = booleanPreferencesKey("hideOpenAppNags")
         val hidePageHeader = booleanPreferencesKey("hidePageHeader")
-        val hideComposeButton = booleanPreferencesKey("hideComposeButton")
         val hideKeywords = stringPreferencesKey("hideKeywords")
     }
 
@@ -44,8 +43,8 @@ class FilterSettingsStore(private val context: Context) {
             prefs[Keys.hideLiveContent] = next.hideLiveContent
             prefs[Keys.hideOpenAppNags] = next.hideOpenAppNags
             prefs[Keys.hidePageHeader] = next.hidePageHeader
-            prefs[Keys.hideComposeButton] = next.hideComposeButton
             prefs[Keys.hideKeywords] = JSONArray(next.hideKeywords).toString()
+            prefs.remove(booleanPreferencesKey("hideComposeButton"))
         }
     }
 
@@ -60,7 +59,6 @@ class FilterSettingsStore(private val context: Context) {
             hideLiveContent = this[Keys.hideLiveContent] ?: d.hideLiveContent,
             hideOpenAppNags = this[Keys.hideOpenAppNags] ?: d.hideOpenAppNags,
             hidePageHeader = this[Keys.hidePageHeader] ?: d.hidePageHeader,
-            hideComposeButton = this[Keys.hideComposeButton] ?: d.hideComposeButton,
             hideKeywords = FilterSettings.normalizedKeywords(decodeKeywords(this[Keys.hideKeywords])),
         )
     }

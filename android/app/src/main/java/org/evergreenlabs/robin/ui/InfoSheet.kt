@@ -402,13 +402,6 @@ private fun ShowTogglesSection() {
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             FilterSwitchRow(
-                label = stringResource(R.string.filter_show_compose),
-                checked = !settings.hideComposeButton,
-                onCheckedChange = { v ->
-                    scope.launch { store.update { it.copy(hideComposeButton = !v) } }
-                },
-            )
-            FilterSwitchRow(
                 label = stringResource(R.string.filter_show_live_content),
                 checked = !settings.hideLiveContent,
                 onCheckedChange = { v ->

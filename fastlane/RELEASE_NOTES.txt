@@ -1,3 +1,5 @@
+Start a new post from the header.
+Returning from a post keeps your place in the feed.
 Text size changes the feed only. Settings stays at the normal text size.
 Hide posts that include words or phrases you add in Settings. A keyword matches a whole word, so cat does not hide category.
 A refresh no longer gets stuck on the “Welcome to X!” screen.

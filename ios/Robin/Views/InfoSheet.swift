@@ -105,10 +105,6 @@ struct InfoSheet: View {
 
                 Section("Filter") {
                     Toggle(
-                        "Show compose button",
-                        isOn: invertedBinding(\.hideComposeButton)
-                    )
-                    Toggle(
                         "Show live content",
                         isOn: invertedBinding(\.hideLiveContent)
                     )
@@ -222,7 +218,7 @@ struct InfoSheet: View {
                     Text("Feed filters adapted from Minimal Theme for Twitter / X by Typefully (MIT).")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Link("View on GitHub", destination: Self.minimalTwitterURL)
+                    Link("Minimal Theme on Github", destination: Self.minimalTwitterURL)
                         .font(.subheadline)
                 }
 
