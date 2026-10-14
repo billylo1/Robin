@@ -23,7 +23,7 @@ data class FilterSettings(
     /** Hide live / Spaces / broadcast promo rows in the Following feed. */
     val hideLiveContent: Boolean = true,
     val hideOpenAppNags: Boolean = true,
-    /** Hide X avatar / logo / Subscribe / Following tabs on home (native bar replaces them). */
+    /** Hide X avatar / logo / Subscribe / Following tabs on home (default true; native bar replaces them when hidden). */
     val hidePageHeader: Boolean = true,
     /** Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`. */
     val hideKeywords: List<String> = emptyList(),

@@ -157,6 +157,13 @@ object XFilterInjector {
               } else {
                 root.removeAttribute('data-mt-defer-feed-chrome');
               }
+              if (!cfg.hidePageHeader) {
+                var hh = document.querySelectorAll('[data-testid="TopNavBar"][data-mt-robin-hide], header[role="banner"][data-mt-robin-hide]');
+                for (var i = 0; i < hh.length; i++) {
+                  hh[i].style.removeProperty('display');
+                  hh[i].removeAttribute('data-mt-robin-hide');
+                }
+              }
               var scale = cfg.fontScale;
               if (typeof scale !== 'number' || !(scale > 0)) scale = 1;
               if (scale === 1) root.style.removeProperty('zoom');

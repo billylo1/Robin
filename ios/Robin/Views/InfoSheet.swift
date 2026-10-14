@@ -105,6 +105,10 @@ struct InfoSheet: View {
 
                 Section("Filter") {
                     Toggle(
+                        "Show Feed Tab",
+                        isOn: invertedBinding(\.hidePageHeader)
+                    )
+                    Toggle(
                         "Show live content",
                         isOn: invertedBinding(\.hideLiveContent)
                     )

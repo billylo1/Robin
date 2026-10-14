@@ -1,3 +1,4 @@
+Added 'Show Feed Tab' in Settings to switch between custom feeds.
 Start a new post from the header.
 Returning from a post keeps your place in the feed.
 Text size changes the feed only. Settings stays at the normal text size.

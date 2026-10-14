@@ -27,7 +27,7 @@ struct FilterSettings: Equatable, Sendable {
     /// Hide live / Spaces / broadcast promo rows in the Following feed.
     var hideLiveContent: Bool = true
     var hideOpenAppNags: Bool = true
-    /// Hide X avatar / logo / Subscribe / Following tabs on home (native bar replaces them).
+    /// Hide X avatar / logo / Subscribe / Following tabs on home (default true; native bar replaces them when hidden).
     var hidePageHeader: Bool = true
     /// Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`.
     var hideKeywords: [String] = []

@@ -397,14 +397,9 @@
     if (!homeResponseSeen) return;
     if (isWelcomeInterstitial()) return;
     if (!settings.forceFollowing || !isHomePath()) return;
+    if (window.__ROBIN_USER_PICKED_TAB__) return;
     var now = Date.now();
     if (now - lastFollowClick < 1500) return;
-    if (
-      window.__ROBIN_USER_PICKED_TAB__ &&
-      now - window.__ROBIN_USER_PICKED_TAB__ < 8000
-    ) {
-      return;
-    }
 
     var tabs = findHomeTabs();
     if (!tabs.following || isTabSelected(tabs.following)) return;
@@ -421,14 +416,9 @@
     if (!homeResponseSeen) return;
     if (isWelcomeInterstitial()) return;
     if (settings.forceFollowing || !isHomePath()) return;
+    if (window.__ROBIN_USER_PICKED_TAB__) return;
     var now = Date.now();
     if (now - lastFollowClick < 1500) return;
-    if (
-      window.__ROBIN_USER_PICKED_TAB__ &&
-      now - window.__ROBIN_USER_PICKED_TAB__ < 8000
-    ) {
-      return;
-    }
 
     var tabs = findHomeTabs();
     if (!tabs.forYou || isTabSelected(tabs.forYou)) return;
@@ -951,6 +941,21 @@
     root.classList.toggle("mt-hide-page-header", !!settings.hidePageHeader);
     root.classList.add("mt-hide-compose");
     root.classList.toggle("mt-hide-live", !!settings.hideLiveContent);
+    if (!settings.hidePageHeader) {
+      var headerHides = document.querySelectorAll(
+        '[data-testid="TopNavBar"][data-mt-robin-hide], header[role="banner"][data-mt-robin-hide], [data-testid="ScrollSnap-List"][data-mt-robin-hide], [role="tablist"][data-mt-robin-hide]'
+      );
+      for (var hi = 0; hi < headerHides.length; hi++) {
+        var hEl = headerHides[hi];
+        while (hEl && hEl !== root) {
+          if (hEl.getAttribute && hEl.getAttribute("data-mt-robin-hide") === "1") {
+            hEl.style.removeProperty("display");
+            hEl.removeAttribute("data-mt-robin-hide");
+          }
+          hEl = hEl.parentElement;
+        }
+      }
+    }
     // Keep TopNavBar visible until X is confirmed loading HomeLatestTimeline.
     var deferChrome =
       home &&
@@ -992,7 +997,28 @@
   var chromePassHref = "";
 
   function hidePageHeaderFallback() {
-    if (!currentSettings().hidePageHeader || !isHomePath()) return;
+    if (!isHomePath()) return;
+
+    var side = document.querySelector('[data-testid="sidebarColumn"]');
+    if (side) markRobinHide(side);
+
+    // Desktop / Mac: Following switcher + inline composer at top of feed
+    var col = document.querySelector('[data-testid="primaryColumn"]');
+    if (col) {
+      setImportant(col, "max-width", "min(100%, 840px)");
+      setImportant(col, "width", "100%");
+      setImportant(col, "margin-left", "auto");
+      setImportant(col, "margin-right", "auto");
+
+      var kids = col.children;
+      for (var ci = 0; ci < Math.min(kids.length, 3); ci++) {
+        setImportant(kids[ci], "max-width", "none");
+        setImportant(kids[ci], "width", "100%");
+      }
+      hideInlineHomeComposer(col);
+    }
+
+    if (!currentSettings().hidePageHeader) return;
 
     var deferFeedChrome =
       !!currentSettings().forceFollowing &&
@@ -1023,16 +1049,8 @@
     for (var bi = 0; bi < banners.length; bi++) {
       markRobinHide(banners[bi]);
     }
-    var side = document.querySelector('[data-testid="sidebarColumn"]');
-    if (side) markRobinHide(side);
 
-    // Desktop / Mac: Following switcher + inline composer at top of feed
-    var col = document.querySelector('[data-testid="primaryColumn"]');
     if (!col) return;
-    setImportant(col, "max-width", "min(100%, 840px)");
-    setImportant(col, "width", "100%");
-    setImportant(col, "margin-left", "auto");
-    setImportant(col, "margin-right", "auto");
 
     var kids = col.children;
     for (var ci = 0; ci < Math.min(kids.length, 3); ci++) {
@@ -1249,21 +1267,7 @@
   function onUserTabClick(ev) {
     var t = ev.target && ev.target.closest && ev.target.closest('[role="tab"]');
     if (!t || !isHomePath()) return;
-    var label = tabLabel(t);
-    if (
-      label.indexOf("for you") !== -1 ||
-      label === "for you" ||
-      label === "おすすめ" ||
-      label === "para ti" ||
-      label === "pour vous" ||
-      label === "following" ||
-      label === "フォロー中" ||
-      label === "seguindo" ||
-      label === "abonnements" ||
-      label === "siguiendo"
-    ) {
-      window.__ROBIN_USER_PICKED_TAB__ = Date.now();
-    }
+    window.__ROBIN_USER_PICKED_TAB__ = Date.now();
   }
 
   /**

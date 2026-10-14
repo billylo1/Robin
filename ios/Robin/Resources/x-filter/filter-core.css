@@ -35,14 +35,17 @@ html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) 
 html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) header[role="banner"],
 /* Home tabs sit in the timeline column, not TopNavBar. Leaving them in flow
    until the deferred JS hide shifts the feed by about that row. */
-html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) div[data-testid="ScrollSnap-List"][role="tablist"],
-html.mt-hide-page-header[data-mt-home="1"] nav[aria-label="Primary"],
-html.mt-hide-page-header[data-mt-home="1"] [data-testid="sidebarColumn"],
-html.mt-hide-page-header[data-mt-home="1"] [aria-label="Account menu"] {
+html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) div[data-testid="ScrollSnap-List"][role="tablist"] {
   display: none !important;
 }
 
-html.mt-hide-page-header[data-mt-home="1"] main[role="main"] {
+html[data-mt-home="1"] nav[aria-label="Primary"],
+html[data-mt-home="1"] [data-testid="sidebarColumn"],
+html[data-mt-home="1"] [aria-label="Account menu"] {
+  display: none !important;
+}
+
+html[data-mt-home="1"] main[role="main"] {
   display: flex !important;
   visibility: visible !important;
   width: 100% !important;
@@ -53,7 +56,7 @@ html.mt-hide-page-header[data-mt-home="1"] main[role="main"] {
 }
 
 /* Desktop column row: after hiding left/right rails, center the feed. */
-html.mt-hide-page-header[data-mt-home="1"] main[role="main"] > div {
+html[data-mt-home="1"] main[role="main"] > div {
   display: flex !important;
   visibility: visible !important;
   width: 100% !important;
@@ -65,7 +68,7 @@ html.mt-hide-page-header[data-mt-home="1"] main[role="main"] > div {
   min-height: 100vh !important;
 }
 
-html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] {
+html[data-mt-home="1"] [data-testid="primaryColumn"] {
   display: flex !important;
   flex-direction: column !important;
   visibility: visible !important;
@@ -82,7 +85,7 @@ html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] {
   transform: none !important;
 }
 
-html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] > div {
+html[data-mt-home="1"] [data-testid="primaryColumn"] > div {
   max-width: none !important;
   width: 100% !important;
   flex: 1 1 auto !important;
@@ -90,19 +93,19 @@ html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] > div {
 }
 
 /* X nests another max-width rail inside primaryColumn — stretch it too. */
-html.mt-hide-page-header[data-mt-home="1"] [data-testid="primaryColumn"] > div > div {
+html[data-mt-home="1"] [data-testid="primaryColumn"] > div > div {
   max-width: none !important;
   width: 100% !important;
 }
 
 /* Trends “What’s happening” module if it escapes sidebarColumn hide */
-html.mt-hide-page-header[data-mt-home="1"]
+html[data-mt-home="1"]
   [aria-label="Timeline: Trending now"],
-html.mt-hide-page-header[data-mt-home="1"]
+html[data-mt-home="1"]
   section[aria-labelledby][role="region"]:has(a[href*="/i/trending"]),
-html.mt-hide-page-header[data-mt-home="1"]
+html[data-mt-home="1"]
   div[aria-label="What’s happening"],
-html.mt-hide-page-header[data-mt-home="1"]
+html[data-mt-home="1"]
   div[aria-label="What's happening"] {
   display: none !important;
 }

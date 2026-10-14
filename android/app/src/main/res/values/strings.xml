@@ -38,6 +38,7 @@
     <string name="filter_prefer_latest">Prefer Reverse Time order</string>
     <string name="filter_hide_live_content">Hide live content</string>
     <string name="filter_display">Filter</string>
+    <string name="filter_show_page_header">Show Feed Tab</string>
     <string name="filter_show_live_content">Show live content</string>
     <string name="filter_hide_who_to_follow">Hide Who to follow</string>
     <string name="filter_hide_open_app">Hide open-in-app prompts</string>
