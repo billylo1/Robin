@@ -20,6 +20,10 @@ android/.idea/
 android/*.iml
 android/app/release/
 ios/Config.xcconfig
+ios/Robin/GoogleService-Info.plist
+!ios/Robin/GoogleService-Info.plist.example
+android/app/google-services.json
+!android/app/google-services.json.example
 ios/**/xcuserdata/
 ios/*.xcuserstate
 ios/DerivedData/
