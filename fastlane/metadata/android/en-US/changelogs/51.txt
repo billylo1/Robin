@@ -1,0 +1,1 @@
+Fix long-press gesture timing and haptic feedback triggering fact check.
