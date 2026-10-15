@@ -2648,7 +2648,7 @@
           factCheckTimer = setTimeout(function () {
             triggerFactCheck(art);
             cancelFactCheck();
-          }, 480);
+          }, 400);
         }
       }
 
@@ -2662,7 +2662,7 @@
     "pointermove",
     function (e) {
       if (factCheckTimer) {
-        if (Math.abs(e.clientX - factCheckStartX) > 10 || Math.abs(e.clientY - factCheckStartY) > 10) {
+        if (Math.abs(e.clientX - factCheckStartX) > 18 || Math.abs(e.clientY - factCheckStartY) > 18) {
           cancelFactCheck();
         }
       }
@@ -2678,6 +2678,14 @@
   document.addEventListener(
     "contextmenu",
     function (e) {
+      if (factCheckTimer && factCheckTargetArticle) {
+        var art = factCheckTargetArticle;
+        cancelFactCheck();
+        triggerFactCheck(art);
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
       if (suppressNextContextMenu) {
         e.preventDefault();
         e.stopPropagation();

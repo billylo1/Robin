@@ -23,7 +23,7 @@ flowchart LR
   user --> native
   native --> webview
   filter --> webview
-  webview -- "long-press (480ms)" --> native
+  webview -- "long-press (400ms)" --> native
   native --> appcheck
   appcheck --> gemini
   native -- "Fact Check Request" --> gemini

@@ -252,6 +252,8 @@ private class FactCheckBridge(
                         externalLinks = links,
                     )
                 )
+            }.onFailure { e ->
+                Log.e(TAG, "FactCheckBridge: failed to dispatch fact check request", e)
             }
         }
     }
@@ -1096,8 +1098,12 @@ fun XWebFeedScreen(
                     )
                     addJavascriptInterface(
                         FactCheckBridge { request ->
-                            val v = context.getSystemService(Vibrator::class.java)
-                            v?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                            runCatching {
+                                val v = context.getSystemService(Vibrator::class.java)
+                                v?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                            }.onFailure { e ->
+                                Log.w(TAG, "Haptic vibration failed", e)
+                            }
                             activeFactCheck = request
                         },
                         "RobinFactCheck",
