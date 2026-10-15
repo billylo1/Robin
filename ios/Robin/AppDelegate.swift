@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     ) -> Bool {
         configureSentry()
         Analytics.configure()
+        FirebaseBootstrap.configure()
 
         for case let scene as UIWindowScene in application.connectedScenes {
             Self.applyMacMinimumWindowWidth(scene)

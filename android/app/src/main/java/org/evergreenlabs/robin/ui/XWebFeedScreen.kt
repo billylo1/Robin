@@ -3,14 +3,19 @@ package org.evergreenlabs.robin.ui
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.VibrationEffect
+import android.os.Vibrator
+import org.json.JSONObject
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -214,6 +219,41 @@ private class BootBridge(
     @JavascriptInterface
     fun retry(nonce: String) {
         main.post { onRetry(nonce) }
+    }
+}
+
+private class FactCheckBridge(
+    private val onFactCheck: (FactCheckRequest) -> Unit,
+) {
+    private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun factCheck(jsonStr: String) {
+        main.post {
+            runCatching {
+                val json = JSONObject(jsonStr)
+                val text = json.optString("text", "").trim()
+                if (text.isEmpty()) return@post
+                val author = json.optString("author").takeIf { it.isNotBlank() }
+                val url = json.optString("url").takeIf { it.isNotBlank() }
+                val linksArray = json.optJSONArray("links")
+                val links = mutableListOf<String>()
+                if (linksArray != null) {
+                    for (i in 0 until linksArray.length()) {
+                        val item = linksArray.optString(i)
+                        if (!item.isNullOrBlank()) links.add(item)
+                    }
+                }
+                onFactCheck(
+                    FactCheckRequest(
+                        text = text,
+                        author = author,
+                        tweetURL = url,
+                        externalLinks = links,
+                    )
+                )
+            }
+        }
     }
 }
 
@@ -601,6 +641,7 @@ fun XWebFeedScreen(
     var pendingFeedSettingsReload by remember { mutableStateOf(false) }
     /** One automatic /home reload per refresh when X paints the welcome empty state. */
     var welcomeAutoRetryUsed by remember { mutableStateOf(false) }
+    var activeFactCheck by remember { mutableStateOf<FactCheckRequest?>(null) }
     /** Bumped to restart the boot-cover timeout without toggling visibility. */
     var coverDeadline by remember { mutableIntStateOf(0) }
     val welcomeRetryHolder = remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -1054,6 +1095,14 @@ fun XWebFeedScreen(
                         "RobinBoot",
                     )
                     addJavascriptInterface(
+                        FactCheckBridge { request ->
+                            val v = context.getSystemService(Vibrator::class.java)
+                            v?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+                            activeFactCheck = request
+                        },
+                        "RobinFactCheck",
+                    )
+                    addJavascriptInterface(
                         BenchmarkBridge { raw ->
                             val result = org.evergreenlabs.robin.services.BenchmarkResult.fromJsonString(raw)
                             if (result != null) {
@@ -1450,6 +1499,13 @@ fun XWebFeedScreen(
                 showBootCoverState.value = true
                 signOutOfX(webViewRef)
             },
+        )
+    }
+
+    activeFactCheck?.let { req ->
+        FactCheckSheet(
+            request = req,
+            onDismiss = { activeFactCheck = null },
         )
     }
 }

@@ -1,3 +1,4 @@
+Long-press any post to fact-check claims with generative AI, web search evidence, and credibility scores. In-feed marker shows when you've caught up to posts from your last visit.
 Added 'Show Feed Tab' in Settings to switch between custom feeds.
 Start a new post from the header.
 Returning from a post keeps your place in the feed.

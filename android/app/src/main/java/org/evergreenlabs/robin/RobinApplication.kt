@@ -9,6 +9,7 @@ class RobinApplication : Application() {
         super.onCreate()
         AppGraph.init(this)
         Analytics.init(this)
+        org.evergreenlabs.robin.firebase.FirebaseBootstrap.configure(this)
         configureSentry()
     }
 

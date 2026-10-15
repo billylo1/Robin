@@ -25,6 +25,9 @@ packages:
   aptabase-swift:
     url: https://github.com/aptabase/aptabase-swift
     from: 0.3.4
+  firebase-ios-sdk:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 12.16.0
 targets:
   Robin:
     type: application
@@ -42,8 +45,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.evergreenlabs.robin
         PRODUCT_NAME: Robin
-        MARKETING_VERSION: "0.2.21"
-        CURRENT_PROJECT_VERSION: "56"
+        MARKETING_VERSION: "0.2.22"
+        CURRENT_PROJECT_VERSION: "57"
         INFOPLIST_FILE: Robin/Info.plist
         CODE_SIGN_ENTITLEMENTS: Robin/Robin.entitlements
         GENERATE_INFOPLIST_FILE: NO
@@ -66,6 +69,12 @@ targets:
         product: Sentry-Dynamic
       - package: aptabase-swift
         product: Aptabase
+      - package: firebase-ios-sdk
+        product: FirebaseCore
+      - package: firebase-ios-sdk
+        product: FirebaseAILogic
+      - package: firebase-ios-sdk
+        product: FirebaseAppCheck
     # Keep custom Info.plist keys; do not let empty properties wipe the file.
     info:
       path: Robin/Info.plist

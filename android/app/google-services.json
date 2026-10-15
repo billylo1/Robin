@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "960818316288",
+    "project_id": "robin-evergreen",
+    "storage_bucket": "robin-evergreen.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:960818316288:android:4e07e8bb52339d3593c4e5",
+        "android_client_info": {
+          "package_name": "org.evergreenlabs.robin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBk7kmfWv3kNsv5gBG2p6zIvad22uJk_AI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

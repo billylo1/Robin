@@ -12,6 +12,9 @@ struct InfoSheet: View {
     var onSignOut: () -> Void = {}
 
     @State private var keywordDraft = ""
+    #if DEBUG
+    @State private var testFactCheckRequest: FactCheckRequest?
+    #endif
 
     private static let minimalTwitterURL = URL(
         string: "https://github.com/typefully/minimal-twitter"
@@ -216,6 +219,17 @@ struct InfoSheet: View {
                         }
                     }
                 }
+
+                Section("Fact Check (Debug Test)") {
+                    Button("Test Fact-Check on Sample Tweet") {
+                        testFactCheckRequest = FactCheckRequest(
+                            text: "NASA's James Webb Space Telescope has confirmed atmospheric water vapor on a rocky exoplanet orbiting in the habitable zone of a nearby red dwarf star.",
+                            author: "NASA Space Science @NASAWebb",
+                            tweetURL: URL(string: "https://x.com/NASAWebb/status/1880000000000000000"),
+                            externalLinks: [URL(string: "https://www.nasa.gov")!]
+                        )
+                    }
+                }
                 #endif
 
                 Section("Credits") {
@@ -248,6 +262,11 @@ struct InfoSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            #if DEBUG
+            .sheet(item: $testFactCheckRequest) { req in
+                FactCheckSheet(request: req)
+            }
+            #endif
         }
     }
 

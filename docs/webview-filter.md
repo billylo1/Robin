@@ -70,6 +70,16 @@ When browsing the Following timeline, filter-core tracks the most recent (topmos
 - Seamlessly attached to the target post and virtualizes with the feed.
 - If the exact post was deleted or removed, gracefully falls back to the first post older than the target timestamp.
 - Automatically cleans up when navigating away from the home timeline.
+
+### Long-press to fact-check
+
+Long-pressing on any tweet article (`article[data-testid="tweet"]`) triggers an AI-powered credibility analysis:
+- **Gesture timing**: ~480ms hold timer initiated on `pointerdown`. Automatically cancelled if the finger moves >10px (`pointermove`), if the user scrolls/wheels, or on `pointerup` / `pointercancel`. Ignored if tapping input, textarea, or video elements.
+- **Visual feedback**: Injected CSS class `.robin-factcheck-pulse` performs a subtle breathing scale and opacity pulse on the target article for 600ms. Native context menu is suppressed for 800ms.
+- **Tweet data extraction**: Extracts text (including nested quoted tweets via `data-testid="quoteTweet"`), author user name/handle, canonical tweet URL (`https://x.com/i/status/<statusId>`), and out-links (`t.co` and card URLs).
+- **Native bridge**: Sends the structured JSON payload to the native platform via `window.webkit.messageHandlers.robinFactCheck.postMessage(payload)` on iOS and `window.RobinFactCheck.factCheck(jsonString)` on Android.
+- **Native feedback & sheet**: Host fires medium haptic feedback on iOS (`UIImpactFeedbackGenerator`) / haptic vibration on Android, and presents a native fact-check sheet that contacts Gemini 3.8 Flash via Firebase AI Logic.
+
 ## Defaults
 
 All filter toggles default **on**; page header hide **on** (default to hide in-webview feed tabs; can be toggled on in Settings via "Show Feed Tab" so users can choose their feeds); X’s compose FAB is always hidden (native header New post); live / Spaces / broadcast promo hide **on** (`hideLiveContent`). Home feed defaults to **Following (by time)** (`forceFollowing`, `hideForYouTab`, `preferLatest` all true). Settings offers two modes: Following (by time) and For You (clears `forceFollowing` / `hideForYouTab`; `preferLatest` is Following-only). Font scale defaults to **1.0** (100%), max **2.0**.

@@ -152,6 +152,7 @@ struct XWebFeedView: View {
     @State private var pendingFeedSettingsReload = false
     /// One automatic /home reload per refresh when X paints the welcome empty state.
     @State private var welcomeAutoRetryUsed = false
+    @State private var activeFactCheck: FactCheckRequest?
 
     private static let scrollTopThreshold: CGFloat = 400
     private static let nearTopThreshold: CGFloat = 80
@@ -241,7 +242,8 @@ struct XWebFeedView: View {
                     fontScale: fontScale.scale,
                     onScroll: handleScroll,
                     onInteract: noteUserInteraction,
-                    onWelcomeRetry: retryWelcomeLoad
+                    onWelcomeRetry: retryWelcomeLoad,
+                    onFactCheck: { req in activeFactCheck = req }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -283,6 +285,9 @@ struct XWebFeedView: View {
                 XWebSession.signOut(webView: webView)
             })
             .presentationBackground(.background)
+        }
+        .sheet(item: $activeFactCheck) { req in
+            FactCheckSheet(request: req)
         }
         .onChange(of: filterStore.settings) { _, newSettings in
             guard let webView else { return }
@@ -665,6 +670,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
     var onScroll: (CGFloat) -> Void
     var onInteract: () -> Void
     var onWelcomeRetry: () -> Void
+    var onFactCheck: (FactCheckRequest) -> Void
 
     func makeCoordinator() -> XWebViewCoordinator {
         XWebViewCoordinator(
@@ -677,7 +683,8 @@ private struct XWebViewRepresentable: UIViewRepresentable {
             fontScale: fontScale,
             onScroll: onScroll,
             onInteract: onInteract,
-            onWelcomeRetry: onWelcomeRetry
+            onWelcomeRetry: onWelcomeRetry,
+            onFactCheck: onFactCheck
         )
     }
 
@@ -709,6 +716,10 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         config.userContentController.add(
             context.coordinator,
             name: "mtInteract"
+        )
+        config.userContentController.add(
+            context.coordinator,
+            name: "robinFactCheck"
         )
         config.userContentController.addUserScript(
             WKUserScript(
@@ -774,6 +785,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     var onScroll: (CGFloat) -> Void
     var onInteract: () -> Void
     var onWelcomeRetry: () -> Void
+    var onFactCheck: (FactCheckRequest) -> Void
 
     /// After a welcome-state reload, ignore mtBoot from the document we left.
     private var rejectBootUntilFreshNonce = false
@@ -805,7 +817,8 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         fontScale: Double,
         onScroll: @escaping (CGFloat) -> Void,
         onInteract: @escaping () -> Void,
-        onWelcomeRetry: @escaping () -> Void
+        onWelcomeRetry: @escaping () -> Void,
+        onFactCheck: @escaping (FactCheckRequest) -> Void
     ) {
         _pageURL = pageURL
         _progress = progress
@@ -817,12 +830,28 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         self.onScroll = onScroll
         self.onInteract = onInteract
         self.onWelcomeRetry = onWelcomeRetry
+        self.onFactCheck = onFactCheck
     }
 
     func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        if message.name == "robinFactCheck" {
+            let dict = message.body as? [String: Any] ?? [:]
+            let text = dict["text"] as? String ?? ""
+            let author = dict["author"] as? String
+            let urlStr = dict["url"] as? String
+            let tweetURL = urlStr.flatMap { URL(string: $0) }
+            let linkStrs = dict["links"] as? [String] ?? []
+            let links = linkStrs.compactMap { URL(string: $0) }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            DispatchQueue.main.async {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                self.onFactCheck(FactCheckRequest(text: text, author: author, tweetURL: tweetURL, externalLinks: links))
+            }
+            return
+        }
         if message.name == "mtBoot" {
             let nonce = message.body as? String ?? ""
             if rejectBootUntilFreshNonce {

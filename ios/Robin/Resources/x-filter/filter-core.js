@@ -2554,11 +2554,104 @@
     beginFeedPin();
   }
 
+  // --- Long-press to Fact-Check ---
+  var factCheckTimer = null;
+  var factCheckTargetArticle = null;
+  var factCheckStartX = 0;
+  var factCheckStartY = 0;
+  var suppressNextContextMenu = false;
+
+  function cancelFactCheck() {
+    if (factCheckTimer) {
+      clearTimeout(factCheckTimer);
+      factCheckTimer = null;
+    }
+    factCheckTargetArticle = null;
+  }
+
+  function extractTweetData(article) {
+    if (!article || !article.querySelector) return null;
+    var tweetTextEl = article.querySelector('[data-testid="tweetText"]');
+    var text = tweetTextEl ? (tweetTextEl.innerText || tweetTextEl.textContent || "").trim() : "";
+
+    var quoteEl = article.querySelector('[data-testid="quoteTweet"]');
+    if (quoteEl) {
+      var quoteTextEl = quoteEl.querySelector('[data-testid="tweetText"]');
+      var qText = quoteTextEl ? (quoteTextEl.innerText || quoteTextEl.textContent || "").trim() : "";
+      if (qText) {
+        text = text ? text + "\n\n[Quoted Tweet]:\n" + qText : qText;
+      }
+    }
+
+    if (!text) return null;
+
+    var userEl = article.querySelector('[data-testid="User-Name"]');
+    var author = userEl ? (userEl.innerText || userEl.textContent || "").trim().replace(/\s+/g, " ") : "";
+
+    var statusId = statusIdFromArticle(article);
+    var tweetURL = statusId ? "https://x.com/i/status/" + statusId : "";
+
+    var links = [];
+    var linkEls = article.querySelectorAll('a[href*="t.co"], [data-testid="card.wrapper"] a[href]');
+    for (var i = 0; i < linkEls.length; i++) {
+      var href = linkEls[i].getAttribute("href");
+      if (href && href.indexOf("http") === 0 && links.indexOf(href) === -1) {
+        links.push(href);
+      }
+    }
+
+    return {
+      text: text,
+      author: author,
+      url: tweetURL,
+      links: links
+    };
+  }
+
+  function triggerFactCheck(article) {
+    var payload = extractTweetData(article);
+    if (!payload || !payload.text) return;
+
+    article.classList.add("robin-factcheck-pulse");
+    setTimeout(function () {
+      article.classList.remove("robin-factcheck-pulse");
+    }, 600);
+
+    suppressNextContextMenu = true;
+    setTimeout(function () {
+      suppressNextContextMenu = false;
+    }, 800);
+
+    try {
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.robinFactCheck) {
+        window.webkit.messageHandlers.robinFactCheck.postMessage(payload);
+      }
+      if (window.RobinFactCheck && window.RobinFactCheck.factCheck) {
+        window.RobinFactCheck.factCheck(JSON.stringify(payload));
+      }
+    } catch (e) {}
+  }
+
   document.addEventListener(
     "pointerdown",
     function (e) {
       tapX = e.clientX;
       tapY = e.clientY;
+
+      var art = e.target && e.target.closest ? e.target.closest('article[data-testid="tweet"]') : null;
+      if (art && (e.button === undefined || e.button === 0)) {
+        var tag = (e.target.tagName || "").toLowerCase();
+        if (tag !== "input" && tag !== "textarea" && tag !== "video") {
+          factCheckTargetArticle = art;
+          factCheckStartX = e.clientX;
+          factCheckStartY = e.clientY;
+          factCheckTimer = setTimeout(function () {
+            triggerFactCheck(art);
+            cancelFactCheck();
+          }, 480);
+        }
+      }
+
       if (!isHomePath()) return;
       if (pinUntil && Date.now() < pinUntil) cancelFeedPin();
       rememberFeedTap(e.target);
@@ -2568,6 +2661,11 @@
   document.addEventListener(
     "pointermove",
     function (e) {
+      if (factCheckTimer) {
+        if (Math.abs(e.clientX - factCheckStartX) > 10 || Math.abs(e.clientY - factCheckStartY) > 10) {
+          cancelFactCheck();
+        }
+      }
       if (!freezeUntil || Date.now() >= freezeUntil) return;
       if (Math.abs(e.clientX - tapX) + Math.abs(e.clientY - tapY) > 16) {
         freezeUntil = 0;
@@ -2575,9 +2673,24 @@
     },
     true
   );
+  document.addEventListener("pointerup", cancelFactCheck, true);
+  document.addEventListener("pointercancel", cancelFactCheck, true);
+  document.addEventListener(
+    "contextmenu",
+    function (e) {
+      if (suppressNextContextMenu) {
+        e.preventDefault();
+        e.stopPropagation();
+        suppressNextContextMenu = false;
+        return false;
+      }
+    },
+    true
+  );
   document.addEventListener(
     "wheel",
     function () {
+      cancelFactCheck();
       freezeUntil = 0;
       if (pinUntil && Date.now() < pinUntil) cancelFeedPin();
     },
@@ -2610,6 +2723,7 @@
   window.addEventListener(
     "scroll",
     function (e) {
+      cancelFactCheck();
       var t = e.target;
       var el =
         t && t !== window && t !== document && typeof t.scrollTop === "number"

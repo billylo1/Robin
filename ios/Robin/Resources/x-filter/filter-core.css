@@ -216,3 +216,23 @@ html.mt-android-webview article canvas {
   margin: 0 !important;
   padding: 0 !important;
 }
+
+/* Long-press fact check pulse animation */
+article[data-testid="tweet"].robin-factcheck-pulse {
+  animation: robinFactCheckPulse 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+@keyframes robinFactCheckPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(0.985);
+    opacity: 0.85;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
