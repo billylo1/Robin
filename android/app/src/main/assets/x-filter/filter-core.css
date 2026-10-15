@@ -159,3 +159,60 @@ html.mt-android-webview article canvas {
   -webkit-transform: none !important;
   will-change: auto !important;
 }
+
+/*
+ * Caught-up marker (Instagram-style feed divider indicating user has caught up
+ * to the most recent post viewed last time).
+ */
+#robin-caught-up-marker,
+.robin-caught-up-marker {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 24px 16px !important;
+  margin: 0 !important;
+  border-top: 1px solid rgba(128, 128, 128, 0.2) !important;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
+  background-color: rgba(128, 128, 128, 0.04) !important;
+  text-align: center !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+#robin-caught-up-marker .robin-caught-up-content {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  max-width: 340px !important;
+}
+
+#robin-caught-up-marker .robin-caught-up-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin-bottom: 2px !important;
+}
+
+#robin-caught-up-marker .robin-caught-up-title {
+  font-size: 16px !important;
+  font-weight: 700 !important;
+  line-height: 20px !important;
+  color: inherit !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+#robin-caught-up-marker .robin-caught-up-subtitle {
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 16px !important;
+  color: inherit !important;
+  opacity: 0.65 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}

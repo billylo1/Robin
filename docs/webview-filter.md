@@ -61,6 +61,15 @@ Title tap while scrolled down still only scrolls to top. The toolbar Refresh but
 `hidePageHeaderFallback` / `hideComposeButtonFallback` mark nodes with `data-mt-robin-hide` when applying inline `display: none`. On SPA leave-home, `clearRobinHides()` removes those styles so a shared timeline ancestor is not left blank after back from a post.
 
 Opening a post snapshots the feed scroll offset, and the tapped row’s distance from the top of the viewport, on pointer-down — before the tap scrolls that row upward. Returning to home puts the header-hide flags back immediately and pins that snapshot until the home tab row is gone again. Scroll-idle used to replace the snapshot with a raw scroll offset before that row was removed, so the posts landed about one tab-row higher. Scrolling the open post does not discard the snapshot. A real drag, wheel, or key on the feed cancels the pin.
+
+### Caught-up marker (Instagram-style)
+
+When browsing the Following timeline, filter-core tracks the most recent (topmost) post viewed during each session. On subsequent visits (after an app restart, feed refresh, or >15m idle backgrounding), an in-feed marker is placed right above that post:
+- Checkmark icon with copy: **You're all caught up** / *You've seen all new posts from last time*.
+- Clearly demarcates newly posted tweets from tweets already viewed in the previous visit.
+- Seamlessly attached to the target post and virtualizes with the feed.
+- If the exact post was deleted or removed, gracefully falls back to the first post older than the target timestamp.
+- Automatically cleans up when navigating away from the home timeline.
 ## Defaults
 
 All filter toggles default **on**; page header hide **on** (default to hide in-webview feed tabs; can be toggled on in Settings via "Show Feed Tab" so users can choose their feeds); X’s compose FAB is always hidden (native header New post); live / Spaces / broadcast promo hide **on** (`hideLiveContent`). Home feed defaults to **Following (by time)** (`forceFollowing`, `hideForYouTab`, `preferLatest` all true). Settings offers two modes: Following (by time) and For You (clears `forceFollowing` / `hideForYouTab`; `preferLatest` is Following-only). Font scale defaults to **1.0** (100%), max **2.0**.

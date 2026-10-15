@@ -1631,6 +1631,344 @@
     if (isBootReady()) revealBoot();
   }
 
+  // --- Caught-Up Marker (Instagram-style feed marker for last-viewed post) ---
+  var SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of inactivity/backgrounding
+
+  function initCaughtUpSession() {
+    try {
+      var now = Date.now();
+      var lastActive = parseInt(
+        localStorage.getItem("robin_last_activity_time") || "0",
+        10
+      );
+      var pendingCurrentId = localStorage.getItem(
+        "robin_current_viewed_status_id"
+      );
+      var pendingCurrentTime = localStorage.getItem(
+        "robin_current_viewed_status_time"
+      );
+      var isNewSession =
+        !lastActive || now - lastActive > SESSION_IDLE_TIMEOUT_MS;
+
+      if (pendingCurrentId) {
+        localStorage.setItem("robin_last_viewed_status_id", pendingCurrentId);
+        if (pendingCurrentTime) {
+          localStorage.setItem(
+            "robin_last_viewed_status_time",
+            pendingCurrentTime
+          );
+        }
+        localStorage.setItem("robin_target_marker_id", pendingCurrentId);
+        if (pendingCurrentTime) {
+          localStorage.setItem(
+            "robin_target_marker_time",
+            pendingCurrentTime
+          );
+        }
+        localStorage.removeItem("robin_current_viewed_status_id");
+        localStorage.removeItem("robin_current_viewed_status_time");
+      } else if (isNewSession) {
+        var lastId = localStorage.getItem("robin_last_viewed_status_id");
+        var lastTime = localStorage.getItem("robin_last_viewed_status_time");
+        if (lastId) {
+          localStorage.setItem("robin_target_marker_id", lastId);
+          if (lastTime) localStorage.setItem("robin_target_marker_time", lastTime);
+        }
+      }
+      localStorage.setItem("robin_last_activity_time", String(now));
+    } catch (e) {}
+  }
+
+  function compareStatusIds(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 0;
+    if (typeof BigInt === "function") {
+      try {
+        var diff = BigInt(a) - BigInt(b);
+        return diff > 0n ? 1 : diff < 0n ? -1 : 0;
+      } catch (e) {}
+    }
+    if (a.length !== b.length) return a.length > b.length ? 1 : -1;
+    return a > b ? 1 : -1;
+  }
+
+  function isPostNewer(idA, timeA, idB, timeB) {
+    if (!idB) return true;
+    if (idA === idB) return false;
+    if (timeA && timeB && Math.abs(timeA - timeB) > 1000) {
+      return timeA > timeB;
+    }
+    return compareStatusIds(idA, idB) > 0;
+  }
+
+  function isPostOlderOrEqual(idA, timeA, idB, timeB) {
+    if (!idB) return false;
+    if (idA === idB) return true;
+    if (timeA && timeB && Math.abs(timeA - timeB) > 1000) {
+      return timeA <= timeB;
+    }
+    return compareStatusIds(idA, idB) <= 0;
+  }
+
+  function timestampFromArticle(article) {
+    if (!article || !article.querySelector) return 0;
+    var id = statusIdFromArticle(article);
+    if (id && repostTimes && repostTimes[id]) {
+      return repostTimes[id];
+    }
+    var timeEl = article.querySelector("time[datetime]");
+    if (!timeEl) return 0;
+    var dt = timeEl.getAttribute("datetime");
+    if (!dt) return 0;
+    var parsed = Date.parse(dt);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
+  function isArticleRepost(article) {
+    if (!article || !article.querySelector) return false;
+    var sc = article.querySelector('[data-testid="socialContext"]');
+    if (sc && (sc.textContent || "").toLowerCase().indexOf("repost") !== -1) {
+      return true;
+    }
+    var id = statusIdFromArticle(article);
+    if (id && repostTimes && repostTimes[id]) return true;
+    return false;
+  }
+
+  function isArticleHidden(article) {
+    if (!article) return true;
+    if (
+      article.getAttribute &&
+      article.getAttribute("data-mt-robin-hide") === "1"
+    ) {
+      return true;
+    }
+    if (article.style && article.style.display === "none") return true;
+    var cell = article.closest
+      ? article.closest('[data-testid="cellInnerDiv"]')
+      : article.parentElement;
+    if (cell) {
+      if (
+        cell.getAttribute &&
+        cell.getAttribute("data-mt-robin-hide") === "1"
+      ) {
+        return true;
+      }
+      if (cell.style && cell.style.display === "none") return true;
+      if (
+        cell.querySelector &&
+        cell.querySelector('[data-testid="placementTracking"]')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isArticleInViewport(art) {
+    if (!art || !art.getBoundingClientRect) return false;
+    var rect = art.getBoundingClientRect();
+    var windowHeight =
+      window.innerHeight ||
+      (document.documentElement && document.documentElement.clientHeight) ||
+      800;
+    return rect.bottom > 40 && rect.top < windowHeight - 40;
+  }
+
+  function trackViewedPosts() {
+    if (!isHomePath()) return;
+    var settings = currentSettings();
+    if (!settings.forceFollowing) return;
+
+    var articles = document.querySelectorAll(
+      '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
+    );
+    if (!articles || !articles.length) return;
+
+    var topVisibleArticle = null;
+    for (var i = 0; i < articles.length; i++) {
+      var art = articles[i];
+      if (isArticleHidden(art)) continue;
+      if (isArticleInViewport(art)) {
+        topVisibleArticle = art;
+        break;
+      }
+    }
+
+    if (!topVisibleArticle) return;
+
+    var id = statusIdFromArticle(topVisibleArticle);
+    if (!id) return;
+    var time = timestampFromArticle(topVisibleArticle);
+
+    try {
+      var curId = localStorage.getItem("robin_current_viewed_status_id");
+      var curTime = parseInt(
+        localStorage.getItem("robin_current_viewed_status_time") || "0",
+        10
+      );
+      if (!curId || isPostNewer(id, time, curId, curTime)) {
+        localStorage.setItem("robin_current_viewed_status_id", id);
+        if (time) {
+          localStorage.setItem(
+            "robin_current_viewed_status_time",
+            String(time)
+          );
+        } else {
+          localStorage.removeItem("robin_current_viewed_status_time");
+        }
+      }
+      localStorage.setItem("robin_last_activity_time", String(Date.now()));
+    } catch (e) {}
+  }
+
+  function removeCaughtUpMarker() {
+    var marker = document.getElementById("robin-caught-up-marker");
+    if (marker) marker.remove();
+  }
+
+  function createCaughtUpMarkerElement() {
+    var el = document.createElement("div");
+    el.id = "robin-caught-up-marker";
+    el.className = "robin-caught-up-marker";
+    el.setAttribute("data-testid", "robin-caught-up-marker");
+    el.setAttribute("role", "status");
+    el.setAttribute(
+      "aria-label",
+      "You're all caught up. You've seen all new posts from last time."
+    );
+    el.innerHTML =
+      '<div class="robin-caught-up-content">' +
+      '  <div class="robin-caught-up-icon" aria-hidden="true">' +
+      '    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '      <circle cx="16" cy="16" r="14" stroke="#00ba7c" stroke-width="2.5" fill="none"/>' +
+      '      <path d="M10 16.5L14 20.5L22 12" stroke="#00ba7c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '    </svg>' +
+      '  </div>' +
+      '  <div class="robin-caught-up-title">You\'re all caught up</div>' +
+      '  <div class="robin-caught-up-subtitle">You\'ve seen all new posts from last time</div>' +
+      '</div>';
+    return el;
+  }
+
+  function updateCaughtUpMarker() {
+    if (!isHomePath()) {
+      removeCaughtUpMarker();
+      return;
+    }
+    var settings = currentSettings();
+    if (!settings.forceFollowing) {
+      removeCaughtUpMarker();
+      return;
+    }
+
+    var targetId = null;
+    var targetTime = 0;
+    try {
+      targetId = localStorage.getItem("robin_target_marker_id");
+      targetTime = parseInt(
+        localStorage.getItem("robin_target_marker_time") || "0",
+        10
+      );
+    } catch (e) {}
+
+    if (!targetId) {
+      removeCaughtUpMarker();
+      return;
+    }
+
+    var articles = document.querySelectorAll(
+      '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
+    );
+    if (!articles || !articles.length) return;
+
+    // 1. Look for exact matching status ID
+    var targetArticle = null;
+    for (var i = 0; i < articles.length; i++) {
+      var art = articles[i];
+      if (isArticleHidden(art)) continue;
+      if (statusIdFromArticle(art) === targetId) {
+        targetArticle = art;
+        break;
+      }
+    }
+
+    // 2. Fallback: if exact tweet not found (deleted or missing), find first older post
+    if (!targetArticle) {
+      for (var j = 0; j < articles.length; j++) {
+        var a = articles[j];
+        if (isArticleHidden(a)) continue;
+        if (isArticleRepost(a)) continue;
+        var aId = statusIdFromArticle(a);
+        var aTime = timestampFromArticle(a);
+        if (!aId) continue;
+        if (isPostOlderOrEqual(aId, aTime, targetId, targetTime)) {
+          targetArticle = a;
+          break;
+        }
+      }
+    }
+
+    if (!targetArticle) {
+      // Target post hasn't mounted yet; user hasn't scrolled far enough
+      return;
+    }
+
+    var parent = targetArticle.parentElement;
+    if (!parent) return;
+
+    var marker = document.getElementById("robin-caught-up-marker");
+    if (!marker) {
+      marker = createCaughtUpMarkerElement();
+    }
+
+    if (
+      marker.parentElement !== parent ||
+      marker.nextElementSibling !== targetArticle
+    ) {
+      parent.insertBefore(marker, targetArticle);
+    }
+  }
+
+  initCaughtUpSession();
+
+  document.addEventListener("visibilitychange", function () {
+    try {
+      if (document.visibilityState === "hidden") {
+        localStorage.setItem("robin_last_activity_time", String(Date.now()));
+      } else if (document.visibilityState === "visible") {
+        var last = parseInt(
+          localStorage.getItem("robin_last_activity_time") || "0",
+          10
+        );
+        if (Date.now() - last > SESSION_IDLE_TIMEOUT_MS) {
+          initCaughtUpSession();
+          requestFullPass();
+        } else {
+          localStorage.setItem("robin_last_activity_time", String(Date.now()));
+        }
+      }
+    } catch (e) {}
+  });
+
+  function persistSessionOnUnload() {
+    try {
+      localStorage.setItem("robin_last_activity_time", String(Date.now()));
+      var curId = localStorage.getItem("robin_current_viewed_status_id");
+      if (curId) {
+        localStorage.setItem("robin_last_viewed_status_id", curId);
+        var curTime = localStorage.getItem(
+          "robin_current_viewed_status_time"
+        );
+        if (curTime) {
+          localStorage.setItem("robin_last_viewed_status_time", curTime);
+        }
+      }
+    } catch (e) {}
+  }
+  window.addEventListener("pagehide", persistSessionOnUnload);
+  window.addEventListener("beforeunload", persistSessionOnUnload);
+
   var DRAIN_BUDGET = 24;
   var processedCells = typeof WeakSet === "function" ? new WeakSet() : null;
   var needsFullPass = true;
@@ -1652,6 +1990,12 @@
     if (!n) return;
     if (n.nodeType === 3) n = n.parentElement;
     if (!n || n.nodeType !== 1) return;
+    if (
+      n.id === "robin-caught-up-marker" ||
+      (n.classList && n.classList.contains("robin-caught-up-marker"))
+    ) {
+      return;
+    }
     if (n.classList && n.classList.contains("mt-repost-time")) return;
     var cell = n.closest && n.closest('[data-testid="cellInnerDiv"]');
     rememberPending(cell || n);
@@ -1720,6 +2064,9 @@
       hideComposeButtonFallback();
       hideOpenAppNags();
     }
+
+    trackViewedPosts();
+    updateCaughtUpMarker();
 
     autoClickNewPostsPill();
     maybeRetryWelcome();
@@ -2191,6 +2538,9 @@
   }
 
   function onFeedPathChange(prevHref, nextHref) {
+    if (!hrefIsHome(nextHref)) {
+      removeCaughtUpMarker();
+    }
     // Only when a post (or other non-home route) is popped back to the feed.
     // The snapshot was taken on the feed itself; re-reading here would sample
     // the status page that just unmounted.
