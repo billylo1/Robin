@@ -1,3 +1,4 @@
+Improve Google sign-in navigation and Settings sheet layout.
 Fix launch flickering and smooth transition to feed.
 Fix long-press gesture timing and haptic feedback triggering fact check.
 Long-press any post to fact-check claims with generative AI, web search evidence, and credibility scores. In-feed marker shows when you've caught up to posts from your last visit.

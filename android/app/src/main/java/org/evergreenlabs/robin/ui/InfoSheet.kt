@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardActions
@@ -34,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -120,7 +122,7 @@ fun InfoSheet(
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
-            HomeFeedSection()
+            HomeFeedSection(onDismiss = onDismiss)
             Spacer(modifier = Modifier.height(16.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
@@ -197,6 +199,10 @@ fun InfoSheet(
     }
 }
 
+private val SettingsRowMinHeight = 52.dp
+private val AdjustButtonWidth = 64.dp
+private val AdjustValueWidth = 56.dp
+
 @Composable
 private fun GeneralSettingsGroup() {
     Surface(
@@ -204,9 +210,8 @@ private fun GeneralSettingsGroup() {
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             FontSizeRow()
-            Spacer(modifier = Modifier.height(12.dp))
             AutoRefreshRow()
         }
     }
@@ -222,7 +227,9 @@ private fun FontSizeRow() {
     val sizeDesc = stringResource(R.string.text_size_percent, percent)
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = SettingsRowMinHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -270,7 +277,9 @@ private fun AutoRefreshRow() {
     val intervalDesc = stringResource(R.string.auto_refresh_interval, label)
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = SettingsRowMinHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -308,9 +317,6 @@ private fun AutoRefreshRow() {
     }
 }
 
-private val AdjustButtonWidth = 64.dp
-private val AdjustValueWidth = 56.dp
-
 @Composable
 private fun AdjustButton(
     label: String,
@@ -323,6 +329,7 @@ private fun AdjustButton(
         enabled = enabled,
         modifier = Modifier
             .width(AdjustButtonWidth)
+            .height(36.dp)
             .semantics { this.contentDescription = contentDescription },
         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
     ) {
@@ -331,7 +338,7 @@ private fun AdjustButton(
 }
 
 @Composable
-private fun HomeFeedSection() {
+private fun HomeFeedSection(onDismiss: () -> Unit = {}) {
     val store = AppGraph.filterSettings
     val settings by store.settings.collectAsStateWithLifecycle(initialValue = FilterSettings.Default)
     val scope = rememberCoroutineScope()
@@ -357,14 +364,19 @@ private fun HomeFeedSection() {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = SettingsRowMinHeight)
                         .selectable(
                             selected = selected,
                             onClick = {
-                                scope.launch { store.update { it.withHomeFeedMode(mode) } }
+                                if (settings.homeFeedMode != mode) {
+                                    scope.launch {
+                                        store.update { it.withHomeFeedMode(mode) }
+                                        onDismiss()
+                                    }
+                                }
                             },
                             role = Role.RadioButton,
-                        )
-                        .padding(vertical = 4.dp),
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     RadioButton(
@@ -400,7 +412,7 @@ private fun ShowTogglesSection() {
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             FilterSwitchRow(
                 label = stringResource(R.string.filter_show_page_header),
                 checked = !settings.hidePageHeader,
@@ -429,7 +441,7 @@ private fun FilterSwitchRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .heightIn(min = SettingsRowMinHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -449,6 +461,11 @@ private fun FilterSwitchRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             enabled = enabled,
+            colors = SwitchDefaults.colors(
+                uncheckedTrackColor = MaterialTheme.colorScheme.surface,
+                uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
         )
     }
 }
@@ -477,9 +494,11 @@ private fun HideKeywordsSection() {
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsRowMinHeight),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 OutlinedTextField(
@@ -500,7 +519,9 @@ private fun HideKeywordsSection() {
             }
             settings.hideKeywords.forEach { keyword ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = SettingsRowMinHeight),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -557,10 +578,12 @@ private fun PerformanceBenchmarkSection() {
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
             // Initial load row
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsRowMinHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -588,11 +611,11 @@ private fun PerformanceBenchmarkSection() {
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             // Scroll render completion row
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsRowMinHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -620,11 +643,11 @@ private fun PerformanceBenchmarkSection() {
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
             // Status chip
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsRowMinHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -644,11 +667,11 @@ private fun PerformanceBenchmarkSection() {
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
             // Action buttons
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsRowMinHeight),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {

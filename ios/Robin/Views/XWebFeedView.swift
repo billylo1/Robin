@@ -44,17 +44,25 @@ private func isAuthFlow(_ url: URL?) -> Bool {
     return s.contains("/i/flow/login")
         || s.contains("/i/flow/single_sign_on")
         || s.contains("/i/flow/signup")
+        || s.contains("/i/jf/")
         || s.contains("accounts.google.com")
         || s.contains("appleid.apple.com")
+}
+
+/// Matches google.com and regional Google ccTLDs used by OAuth SetSID (e.g. accounts.google.ca, accounts.google.co.uk).
+private func isGoogleHost(_ host: String) -> Bool {
+    if host == "google.com" || host.hasSuffix(".google.com") { return true }
+    if host.hasPrefix("accounts.google.") || host.contains(".google.") { return true }
+    return false
 }
 
 /// Google / Apple OAuth documents that should appear in the in-app popup sheet.
 private func isOAuthPopupURL(_ url: URL) -> Bool {
     let host = (url.host ?? "").lowercased()
     if host.isEmpty { return false }
-    if host == "accounts.google.com" || host.hasSuffix(".google.com") { return true }
+    if isGoogleHost(host) { return true }
     if host == "appleid.apple.com" || host.hasSuffix(".apple.com") { return true }
-    if host == "accounts.youtube.com" { return true }
+    if host == "accounts.youtube.com" || host.hasSuffix(".youtube.com") { return true }
     if host.hasSuffix(".googleusercontent.com") || host.hasSuffix(".googleapis.com") {
         return true
     }
@@ -71,6 +79,7 @@ private func isAllowedWebViewURL(_ url: URL) -> Bool {
     let scheme = (url.scheme ?? "").lowercased()
     if scheme == "http" || scheme == "https" {
         guard let host = url.host?.lowercased(), !host.isEmpty else { return true }
+        if isGoogleHost(host) { return true }
         let allowedExact: Set<String> = [
             "x.com", "twitter.com", "api.x.com", "api.twitter.com",
             "mobile.twitter.com", "mobile.x.com",
@@ -79,7 +88,7 @@ private func isAllowedWebViewURL(_ url: URL) -> Bool {
         if allowedExact.contains(host) { return true }
         let allowedSuffixes = [
             ".x.com", ".twitter.com",
-            ".google.com", ".googleusercontent.com", ".googleapis.com", ".gstatic.com",
+            ".google.com", ".googleusercontent.com", ".googleapis.com", ".gstatic.com", ".youtube.com",
             ".apple.com", ".cdn-apple.com",
         ]
         for suffix in allowedSuffixes {
@@ -607,8 +616,29 @@ struct XWebFeedView: View {
             }
         } else {
             warmSnapshot = nil
+            suppressNextHomeBootCover = false
+            updateUserScripts(webView: webView, settings: filterStore.settings, fontScale: fontScale.scale)
+            showBootCover = true
+            armBootCoverTimeout()
             webView.load(request)
         }
+    }
+
+    private func updateUserScripts(webView: WKWebView, settings: FilterSettings, fontScale: Double) {
+        let ucc = webView.configuration.userContentController
+        ucc.removeAllUserScripts()
+        let userScript = XFilterInjector.makeUserScript(
+            settings: settings,
+            fontScale: fontScale
+        )
+        ucc.addUserScript(userScript)
+        ucc.addUserScript(
+            WKUserScript(
+                source: XWebFeedView.scrollProbeJS,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: false
+            )
+        )
     }
 
     /// Feed type / ordering / content filters that need a home reload to fully apply.
@@ -622,10 +652,10 @@ struct XWebFeedView: View {
         guard pendingFeedSettingsReload else { return }
         guard !chrome.infoPresented else { return }
         guard isFeedHome(pageURL) else { return }
-        guard !showBootCover else { return }
-        guard warmSnapshot == nil else { return }
+        cancelWarmReloadTask()
+        warmSnapshot = nil
         pendingFeedSettingsReload = false
-        hardReloadFeed(warm: true, markRefresh: false)
+        hardReloadFeed(warm: false, markRefresh: false)
     }
 
     private func scrollToTop() {
@@ -1041,6 +1071,18 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             pendingAuthPopupSource = nil
             presentAuthPopup(webView, from: source)
         }
+        if webView === authPopupWebView,
+           let path = webView.url?.path.lowercased(),
+           path == "/gsi/transform" || path == "/gis/transform" || path.hasSuffix("/transform")
+        {
+            // GIS transform posted token to opener and should close immediately.
+            // Auto-dismiss as a safety net if window.close was delayed or dropped.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self = self, self.authPopupWebView === webView else { return }
+                NSLog("XWebFeed GIS transform fallback dismissing auth popup")
+                self.dismissAuthPopup()
+            }
+        }
         // Only re-apply filter settings on X hosts (not mid-OAuth).
         if let host = webView.url?.host?.lowercased(),
            host == "x.com" || host.hasSuffix(".x.com")
@@ -1105,7 +1147,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         // for allowlisted hosts; hand off other destinations to SFSafariViewController.
         if scheme == "x-safari-https" || scheme == "x-safari-http" {
             if let rewritten = url.rewrittenSafariSchemeURL() {
-                if !isAllowedWebViewURL(rewritten) {
+                if webView !== authPopupWebView, !isAllowedWebViewURL(rewritten) {
                     NSLog("XWebFeed safari-scheme → Safari sheet: %@", rewritten.absoluteString)
                     openInAppBrowser(rewritten, from: webView)
                     decisionHandler(.cancel, preferences)
@@ -1121,13 +1163,10 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         // New-window requests (targetFrame == nil) are handled in createWebViewWith.
         let isMainFrame = navigationAction.targetFrame?.isMainFrame == true
 
-        // Article / web links leave the X shell → in-app Safari sheet. Keep x.com / OAuth in-app.
-        if isMainFrame, scheme == "http" || scheme == "https", !isAllowedWebViewURL(url) {
+        // Article / web links leave the X shell → in-app Safari sheet. Keep x.com / OAuth popup in-app.
+        if webView !== authPopupWebView, isMainFrame, scheme == "http" || scheme == "https", !isAllowedWebViewURL(url) {
             NSLog("XWebFeed open external: %@", url.absoluteString)
             openInAppBrowser(url, from: webView)
-            if webView === authPopupWebView {
-                dismissAuthPopup()
-            }
             decisionHandler(.cancel, preferences)
             return
         }
@@ -1221,6 +1260,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         configuration.websiteDataStore = .default()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         configuration.defaultWebpagePreferences.preferredContentMode = .recommended
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
         let popup = WKWebView(frame: .zero, configuration: configuration)
         popup.navigationDelegate = self

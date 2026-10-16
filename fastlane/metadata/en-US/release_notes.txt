@@ -1,1 +1,1 @@
-Fix launch flickering and smooth transition to feed.
+Improve Google sign-in navigation and Settings sheet layout.

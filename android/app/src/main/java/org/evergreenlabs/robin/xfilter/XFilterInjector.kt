@@ -38,7 +38,8 @@ object XFilterInjector {
                 // Login / SSO flows break under boot gate + chrome hides — leave them alone.
                 var path = (location.pathname || '').toLowerCase();
                 var href = (location.href || '').toLowerCase();
-                if (path.indexOf('/i/flow/') === 0 || href.indexOf('/i/flow/') !== -1) {
+                if (path.indexOf('/i/flow/') === 0 || href.indexOf('/i/flow/') !== -1 ||
+                    path.indexOf('/i/jf/') === 0 || href.indexOf('/i/jf/') !== -1) {
                   try {
                     document.documentElement.setAttribute('data-mt-boot-ready', '1');
                   } catch (eAuth) {}
@@ -132,7 +133,8 @@ object XFilterInjector {
             (function(){
               var href = (location.href || '').toLowerCase();
               var path = (location.pathname || '').toLowerCase();
-              if (path.indexOf('/i/flow/') === 0 || href.indexOf('/i/flow/') !== -1) {
+              if (path.indexOf('/i/flow/') === 0 || href.indexOf('/i/flow/') !== -1 ||
+                  path.indexOf('/i/jf/') === 0 || href.indexOf('/i/jf/') !== -1) {
                 try {
                   document.documentElement.setAttribute('data-mt-boot-ready', '1');
                 } catch (e) {}

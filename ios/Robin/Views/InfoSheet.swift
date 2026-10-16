@@ -94,7 +94,10 @@ struct InfoSheet: View {
                         selection: Binding(
                             get: { filterStore.settings.homeFeedMode },
                             set: { mode in
+                                guard mode != filterStore.settings.homeFeedMode else { return }
                                 filterStore.update { $0.homeFeedMode = mode }
+                                chrome.infoPresented = false
+                                dismiss()
                             }
                         )
                     ) {
@@ -255,6 +258,7 @@ struct InfoSheet: View {
                     }
                 }
             }
+            .environment(\.defaultMinListRowHeight, Self.rowHeight)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -270,6 +274,9 @@ struct InfoSheet: View {
         }
     }
 
+    /// Consistent row height across all settings rows.
+    private static let rowHeight: CGFloat = 52
+
     /// Shared so the text-size and auto-refresh steppers sit in the same columns.
     private static let valueColumnWidth: CGFloat = 56
 
@@ -283,7 +290,7 @@ struct InfoSheet: View {
         Button(action: action) {
             Text(title)
                 .lineLimit(1)
-                .frame(width: 32, height: 22)
+                .frame(width: 32)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)

@@ -31,6 +31,8 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -355,14 +357,21 @@ private fun isXHost(url: String?): Boolean {
         host == "twitter.com" || host.endsWith(".twitter.com")
 }
 
+/** Matches google.com and regional Google ccTLDs used by OAuth SetSID (e.g. accounts.google.ca, accounts.google.co.uk). */
+private fun isGoogleHost(host: String): Boolean {
+    if (host == "google.com" || host.endsWith(".google.com")) return true
+    if (host.startsWith("accounts.google.") || host.contains(".google.")) return true
+    return false
+}
+
 /** Google / Apple OAuth documents that belong in the in-app popup. */
 private fun isOAuthPopupUrl(url: String?): Boolean {
     if (url.isNullOrBlank()) return false
     val host = android.net.Uri.parse(url).host?.lowercase(Locale.US).orEmpty()
     if (host.isEmpty()) return false
-    if (host == "accounts.google.com" || host.endsWith(".google.com")) return true
+    if (isGoogleHost(host)) return true
     if (host == "appleid.apple.com" || host.endsWith(".apple.com")) return true
-    if (host == "accounts.youtube.com") return true
+    if (host == "accounts.youtube.com" || host.endsWith(".youtube.com")) return true
     if (host.endsWith(".googleusercontent.com") || host.endsWith(".googleapis.com")) return true
     return false
 }
@@ -386,6 +395,7 @@ private fun isAllowedWebViewUrl(url: String): Boolean {
     if (scheme != "http" && scheme != "https") return false
     val host = uri.host?.lowercase(Locale.US).orEmpty()
     if (host.isEmpty()) return true
+    if (isGoogleHost(host)) return true
     val allowedExact = setOf(
         "x.com", "twitter.com", "api.x.com", "api.twitter.com",
         "mobile.twitter.com", "mobile.x.com",
@@ -394,7 +404,7 @@ private fun isAllowedWebViewUrl(url: String): Boolean {
     if (host in allowedExact) return true
     val allowedSuffixes = listOf(
         ".x.com", ".twitter.com",
-        ".google.com", ".googleusercontent.com", ".googleapis.com", ".gstatic.com",
+        ".google.com", ".googleusercontent.com", ".googleapis.com", ".gstatic.com", ".youtube.com",
         ".apple.com", ".cdn-apple.com",
     )
     for (suffix in allowedSuffixes) {
@@ -512,12 +522,13 @@ private fun handleWebNavigation(
     view: WebView?,
     url: String?,
     isForMainFrame: Boolean = true,
+    isAuthPopup: Boolean = false,
 ): Boolean {
     if (url.isNullOrBlank()) return false
     val lower = url.lowercase(Locale.US)
 
     rewrittenInAppUrl(url)?.let { rewritten ->
-        if (!isAllowedWebViewUrl(rewritten)) {
+        if (!isAuthPopup && !isAllowedWebViewUrl(rewritten)) {
             Log.i(TAG, "rewrite → browser: $url → $rewritten")
             openInDefaultBrowser(view?.context, rewritten)
             return true
@@ -530,7 +541,8 @@ private fun handleWebNavigation(
     if (lower.startsWith("http://") || lower.startsWith("https://") ||
         lower.startsWith("about:") || lower.startsWith("blob:")
     ) {
-        if (isForMainFrame &&
+        if (!isAuthPopup &&
+            isForMainFrame &&
             (lower.startsWith("http://") || lower.startsWith("https://")) &&
             !isAllowedWebViewUrl(url)
         ) {
@@ -543,6 +555,91 @@ private fun handleWebNavigation(
 
     Log.i(TAG, "blocked external scheme: $url")
     return true
+}
+
+/**
+ * Embedded Android WebViews are not on Google Play Services' privileged browser allowlist
+ * (`FOR_BROWSER` fails `FetchAllowlistedOriginOperation`, and without `CREDENTIAL_MANAGER_SET_ORIGIN`
+ * throws a fatal `SecurityException` across JNI when `x.com` calls `navigator.credentials.get()`),
+ * nor in `google.com` / `x.com`'s Digital Asset Links (`FOR_APP` fails `[50152] RP ID cannot be validated`).
+ *
+ * However, Chromium WebView still exposes `window.PublicKeyCredential` and resolves
+ * `isUserVerifyingPlatformAuthenticatorAvailable()` to `true`, which tricks `accounts.google.com`
+ * and `x.com` into initiating passkey challenges that cannot succeed in WebView.
+ *
+ * Suppress `PublicKeyCredential` at document start so both `x.com` and `accounts.google.com`
+ * cleanly use password + standard 2FA (Google Prompt, Authenticator, SMS) without crashing or failing.
+ */
+private val SUPPRESS_WEBAUTHN_JS = """
+(function(){
+  try {
+    if (window.PublicKeyCredential) {
+      window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = function() {
+        return Promise.resolve(false);
+      };
+      window.PublicKeyCredential.isConditionalMediationAvailable = function() {
+        return Promise.resolve(false);
+      };
+      try { delete window.PublicKeyCredential; } catch (e) { window.PublicKeyCredential = undefined; }
+    }
+    if (navigator.credentials) {
+      var origGet = navigator.credentials.get;
+      if (origGet) {
+        navigator.credentials.get = function(opts) {
+          if (opts && opts.publicKey) {
+            return Promise.reject(new DOMException('Passkeys are not supported in embedded WebView', 'NotSupportedError'));
+          }
+          return origGet.apply(this, arguments);
+        };
+      }
+      var origCreate = navigator.credentials.create;
+      if (origCreate) {
+        navigator.credentials.create = function(opts) {
+          if (opts && opts.publicKey) {
+            return Promise.reject(new DOMException('Passkeys are not supported in embedded WebView', 'NotSupportedError'));
+          }
+          return origCreate.apply(this, arguments);
+        };
+      }
+    }
+  } catch (e) {}
+})();
+""".trimIndent()
+
+/**
+ * Blink's `DOMWindow::Close()` blocks `window.close()` when `BackForwardLength() > 1`
+ * (which happens after multi-step Google login + 2FA in the popup), preventing
+ * `WebChromeClient.onCloseWindow` from firing on `/gsi/transform`.
+ * Hook `window.close` at document start so the popup always closes after posting the token.
+ */
+private val POPUP_CLOSE_HOOK_JS = """
+(function(){
+  if (window.__robin_close_hooked__) return;
+  window.__robin_close_hooked__ = true;
+  var origClose = window.close;
+  window.close = function() {
+    try {
+      if (origClose) origClose.call(window);
+    } catch (e) {}
+    setTimeout(function() {
+      try {
+        if (window.RobinPopupCloser && window.RobinPopupCloser.close) {
+          window.RobinPopupCloser.close();
+        }
+      } catch (e) {}
+    }, 150);
+  };
+})();
+""".trimIndent()
+
+private fun installWebAuthnSuppression(webView: WebView) {
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+        try {
+            WebViewCompat.addDocumentStartJavaScript(webView, SUPPRESS_WEBAUTHN_JS, setOf("*"))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to install document-start WebAuthn suppression", e)
+        }
+    }
 }
 
 @Composable
@@ -696,6 +793,13 @@ fun XWebFeedScreen(
         showScrollTop = false
     }
 
+    fun clearWarmSnapshot() {
+        warmReloadJob?.cancel()
+        warmReloadJob = null
+        warmSnapshot = null
+        suppressNextHomeBootCoverState.value = false
+    }
+
     fun hardReloadFeed(warm: Boolean, markRefresh: Boolean = true) {
         val wv = webViewRef ?: return
         if (markRefresh) lastFeedRefreshAtMs = System.currentTimeMillis()
@@ -761,8 +865,10 @@ fun XWebFeedScreen(
                 }
             }
         } else {
+            clearWarmSnapshot()
             suppressNextHomeBootCoverState.value = false
             if (!showBootCover) showBootCover = true
+            wv.alpha = 0f
             coverDeadline++
         }
         val previous = wv.settings.cacheMode
@@ -775,17 +881,9 @@ fun XWebFeedScreen(
         if (!pendingFeedSettingsReload) return
         if (infoPresented) return
         if (!isFeedHome(pageUrl)) return
-        if (showBootCover) return
-        if (warmSnapshot != null) return
+        clearWarmSnapshot()
         pendingFeedSettingsReload = false
-        hardReloadFeed(warm = true, markRefresh = false)
-    }
-
-    fun clearWarmSnapshot() {
-        warmReloadJob?.cancel()
-        warmReloadJob = null
-        warmSnapshot = null
-        suppressNextHomeBootCoverState.value = false
+        hardReloadFeed(warm = false, markRefresh = false)
     }
 
     fun canRefreshFeedNow(): Boolean {
@@ -847,13 +945,25 @@ fun XWebFeedScreen(
     LaunchedEffect(infoPresented) {
         if (infoPresented) return@LaunchedEffect
         val opened = filterSettingsWhenInfoOpened
-        filterSettingsWhenInfoOpened = null
         if (opened != null &&
             feedReloadFingerprint(filterSettings) != feedReloadFingerprint(opened)
         ) {
+            filterSettingsWhenInfoOpened = null
             pendingFeedSettingsReload = true
+        } else if (opened != null) {
+            filterSettingsWhenInfoOpened = null
         }
         flushPendingFeedSettingsReloadIfNeeded()
+    }
+
+    LaunchedEffect(filterSettings) {
+        if (infoPresented) return@LaunchedEffect
+        val opened = filterSettingsWhenInfoOpened ?: return@LaunchedEffect
+        if (feedReloadFingerprint(filterSettings) != feedReloadFingerprint(opened)) {
+            filterSettingsWhenInfoOpened = null
+            pendingFeedSettingsReload = true
+            flushPendingFeedSettingsReloadIfNeeded()
+        }
     }
 
     LaunchedEffect(pageUrl, showBootCover, warmSnapshot, pendingFeedSettingsReload) {
@@ -1091,6 +1201,7 @@ fun XWebFeedScreen(
                     settings.javaScriptCanOpenWindowsAutomatically = true
                     // Mobile Chrome UA so X serves TopNavBar layout (same CSS path as iOS).
                     settings.userAgentString = MOBILE_CHROME_USER_AGENT
+                    installWebAuthnSuppression(this)
 
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
@@ -1203,10 +1314,19 @@ fun XWebFeedScreen(
                             val popup = WebView(context).apply {
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
+                                settings.javaScriptCanOpenWindowsAutomatically = true
                                 settings.setSupportMultipleWindows(false)
                                 // Stock UA — Google often rejects embedded/spoofed mobile UAs.
                                 settings.userAgentString = WebSettings.getDefaultUserAgent(context)
                                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                installWebAuthnSuppression(this)
+                                if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                                    try {
+                                        WebViewCompat.addDocumentStartJavaScript(this, POPUP_CLOSE_HOOK_JS, setOf("*"))
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to install document-start popup close hook", e)
+                                    }
+                                }
                             }
                             val dialog = Dialog(context, android.R.style.Theme_DeviceDefault_Light_NoActionBar)
                             val root = LinearLayout(context).apply {
@@ -1258,18 +1378,25 @@ fun XWebFeedScreen(
                             )
                             var ssoFinished = false
                             var sawOAuthProvider = false
+                            var popupDestroyed = false
                             fun destroyPopupQuietly() {
-                                try {
-                                    popup.stopLoading()
-                                    popup.destroy()
-                                } catch (_: Exception) {
-                                }
+                                if (popupDestroyed) return
+                                popupDestroyed = true
+                                // Keep the child WebView alive briefly after dialog dismiss so
+                                // in-flight postMessage / BroadcastChannel to opener completes.
+                                host.postDelayed({
+                                    try {
+                                        popup.stopLoading()
+                                        popup.destroy()
+                                    } catch (_: Exception) {
+                                    }
+                                }, 400)
                             }
                             fun hasXSessionCookie(): Boolean {
                                 val raw = CookieManager.getInstance().getCookie("https://x.com").orEmpty()
                                 return raw.contains("auth_token=") || raw.contains("twid=")
                             }
-                            /** After GIS window.close, wait for opener JS to set the X session. */
+                            /** After GIS window.close, wait for opener JS to set the X session or complete 2FA. */
                             fun pollForSessionThenGoHome() {
                                 var attempts = 0
                                 val poll = object : Runnable {
@@ -1286,8 +1413,8 @@ fun XWebFeedScreen(
                                             return
                                         }
                                         attempts++
-                                        if (attempts < 24) {
-                                            host.postDelayed(this, 400)
+                                        if (attempts < 120) {
+                                            host.postDelayed(this, 500)
                                         } else {
                                             Log.w(
                                                 TAG,
@@ -1296,7 +1423,7 @@ fun XWebFeedScreen(
                                         }
                                     }
                                 }
-                                host.postDelayed(poll, 250)
+                                host.postDelayed(poll, 500)
                             }
                             /**
                              * Google Identity Services (`gis_transform`) posts the id_token to
@@ -1342,9 +1469,47 @@ fun XWebFeedScreen(
                                 if (isOAuthPopupUrl(url)) {
                                     sawOAuthProvider = true
                                 }
-                                if (finished && sawOAuthProvider && isXHost(url)) {
-                                    finishSso("popup-x-host")
+                                if (finished && sawOAuthProvider) {
+                                    if (isXHost(url)) {
+                                        finishSso("popup-x-host")
+                                    } else {
+                                        val path = try {
+                                            android.net.Uri.parse(url).path.orEmpty().lowercase(Locale.US)
+                                        } catch (_: Exception) {
+                                            ""
+                                        }
+                                        if (path == "/gsi/transform" || path == "/gis/transform" || path.endsWith("/transform")) {
+                                            // GIS transform posts the token to opener and calls window.close.
+                                            // Auto-dismiss as a safety net if window.close was blocked or delayed.
+                                            host.postDelayed({
+                                                if (!ssoFinished) {
+                                                    Log.i(TAG, "GIS transform fallback auto-closing auth popup")
+                                                    finishSso("gis-transform-fallback")
+                                                }
+                                            }, 1200)
+                                        }
+                                    }
                                 }
+                            }
+                            popup.addJavascriptInterface(
+                                object {
+                                    @JavascriptInterface
+                                    fun close() {
+                                        host.post {
+                                            Log.i(TAG, "popup JS bridge close invoked sawOAuth=$sawOAuthProvider")
+                                            if (sawOAuthProvider) {
+                                                finishSso("js-bridge.close")
+                                            } else {
+                                                dismissAuthUi()
+                                            }
+                                        }
+                                    }
+                                },
+                                "RobinPopupCloser",
+                            )
+                            fun injectPopupHooksFallback(v: WebView?) {
+                                v?.evaluateJavascript(SUPPRESS_WEBAUTHN_JS, null)
+                                v?.evaluateJavascript(POPUP_CLOSE_HOOK_JS, null)
                             }
                             popup.webChromeClient = object : WebChromeClient() {
                                 override fun onCloseWindow(window: WebView?) {
@@ -1364,13 +1529,16 @@ fun XWebFeedScreen(
                                     v,
                                     request?.url?.toString(),
                                     request?.isForMainFrame ?: true,
+                                    isAuthPopup = true,
                                 )
 
                                 override fun onPageStarted(v: WebView?, url: String?, favicon: Bitmap?) {
+                                    injectPopupHooksFallback(v)
                                     onPopupUrl(url, finished = false)
                                 }
 
                                 override fun onPageFinished(v: WebView?, url: String?) {
+                                    injectPopupHooksFallback(v)
                                     onPopupUrl(url, finished = true)
                                 }
                             }
@@ -1412,6 +1580,7 @@ fun XWebFeedScreen(
 
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             pageUrl = url
+                            view?.evaluateJavascript(SUPPRESS_WEBAUTHN_JS, null)
                             if (isFeedHome(url)) {
                                 if (suppressNextHomeBootCoverState.value) {
                                     // Warm reload: keep suppress until RobinBoot.ready().
