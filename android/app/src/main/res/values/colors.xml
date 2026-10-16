@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <color name="ic_launcher_background">#F5F0E8</color>
     <color name="ic_launcher_foreground">#1D9BF0</color>
     <color name="window_background">#FFFFFF</color>
     <color name="brand_blue">#1D9BF0</color>
+    <color name="abc_decor_view_status_guard" tools:override="true">@android:color/transparent</color>
+    <color name="abc_decor_view_status_guard_light" tools:override="true">@android:color/transparent</color>
 </resources>

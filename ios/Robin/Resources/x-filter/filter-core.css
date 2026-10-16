@@ -180,6 +180,9 @@ html.mt-android-webview article canvas {
   text-align: center !important;
   user-select: none !important;
   -webkit-user-select: none !important;
+  font-family: TwitterChirp, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
 }
 
 #robin-caught-up-marker .robin-caught-up-content {
@@ -189,6 +192,7 @@ html.mt-android-webview article canvas {
   justify-content: center !important;
   gap: 6px !important;
   max-width: 340px !important;
+  font-family: inherit !important;
 }
 
 #robin-caught-up-marker .robin-caught-up-icon {
@@ -199,6 +203,7 @@ html.mt-android-webview article canvas {
 }
 
 #robin-caught-up-marker .robin-caught-up-title {
+  font-family: inherit !important;
   font-size: 16px !important;
   font-weight: 700 !important;
   line-height: 20px !important;
@@ -208,6 +213,7 @@ html.mt-android-webview article canvas {
 }
 
 #robin-caught-up-marker .robin-caught-up-subtitle {
+  font-family: inherit !important;
   font-size: 13px !important;
   font-weight: 400 !important;
   line-height: 16px !important;

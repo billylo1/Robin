@@ -90,9 +90,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -861,9 +863,15 @@ fun XWebFeedScreen(
     // Slightly longer than filter-core's 5s hard reveal.
     // coverDeadline restarts the wait when a welcome-state retry keeps the cover up.
     LaunchedEffect(showBootCover, coverDeadline) {
-        if (!showBootCover) return@LaunchedEffect
+        if (!showBootCover) {
+            webViewRef?.alpha = 1f
+            return@LaunchedEffect
+        }
         delay(5_500)
-        if (showBootCover) showBootCover = false
+        if (showBootCover) {
+            showBootCover = false
+            webViewRef?.alpha = 1f
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -926,6 +934,7 @@ fun XWebFeedScreen(
     fun revealBoot() {
         showBootCover = false
         suppressNextHomeBootCoverState.value = false
+        webViewRef?.alpha = 1f
         if (warmSnapshot != null) {
             warmReloadJob?.cancel()
             warmReloadJob = scope.launch {
@@ -948,7 +957,11 @@ fun XWebFeedScreen(
     val headerAccent = if (isSystemInDarkTheme()) RobinRedLight else RobinRed
     Column(modifier = modifier.fillMaxSize()) {
         // Compact custom header (TopAppBar paints through status bars and reads too tall).
-        Column(modifier = Modifier.background(headerBg)) {
+        Column(
+            modifier = Modifier
+                .zIndex(1f)
+                .background(headerBg),
+        ) {
             Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
             Row(
                 modifier = Modifier
@@ -1050,12 +1063,18 @@ fun XWebFeedScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .weight(1f)
+                .clipToBounds(),
         ) {
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds(),
                 factory = { ctx ->
                 WebView(ctx).apply {
+                    // Prevent black surface flash during cold start before first visual paint.
+                    alpha = if (showBootCover) 0f else 1f
+                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1072,9 +1091,6 @@ fun XWebFeedScreen(
                     settings.javaScriptCanOpenWindowsAutomatically = true
                     // Mobile Chrome UA so X serves TopNavBar layout (same CSS path as iOS).
                     settings.userAgentString = MOBILE_CHROME_USER_AGENT
-                    // A hardware texture layer snapshots the WebView and updates
-                    // late on long flings (blank feed for seconds). Draw directly.
-                    setLayerType(View.LAYER_TYPE_NONE, null)
 
                     CookieManager.getInstance().setAcceptCookie(true)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
@@ -1419,6 +1435,13 @@ fun XWebFeedScreen(
                             if (request?.isForMainFrame == true) bootNonceGate.clearReject()
                         }
 
+                        override fun onPageCommitVisible(view: WebView?, url: String?) {
+                            super.onPageCommitVisible(view, url)
+                            if (!showBootCover) {
+                                view?.alpha = 1f
+                            }
+                        }
+
                         override fun onPageFinished(view: WebView?, url: String?) {
                             pageUrl = url
                             view?.let {
@@ -1441,6 +1464,9 @@ fun XWebFeedScreen(
                                 // After login, drop history so system back cannot return to login.
                                 if (isFeedHome(url)) {
                                     it.clearHistory()
+                                } else {
+                                    it.alpha = 1f
+                                    showBootCover = false
                                 }
                                 canGoBack = it.canGoBack()
                             }
@@ -1472,6 +1498,7 @@ fun XWebFeedScreen(
                     webViewRef = view
                     canGoBack = view.canGoBack()
                     pageUrl = view.url
+                    view.alpha = if (showBootCover) 0f else 1f
                     // Settings / font scale are applied via LaunchedEffect — avoid
                     // re-toggling zoom/classes on every recomposition (paint churn).
                 },

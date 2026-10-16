@@ -1,0 +1,1 @@
+Fix launch flickering and smooth transition to feed.
