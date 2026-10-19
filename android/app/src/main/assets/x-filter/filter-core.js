@@ -390,6 +390,33 @@
     return !!tab;
   }
 
+  function isFollowingFeedActive() {
+    if (!isHomePath()) return false;
+
+    // Check all selected tabs in the home tablist or header
+    var selectedTabs = document.querySelectorAll(
+      "div[data-testid='ScrollSnap-List'][role='tablist'] [role='tab'][aria-selected='true'], " +
+      "div[role='tablist'] [role='tab'][aria-selected='true'], " +
+      "[role='tab'][aria-selected='true']"
+    );
+    if (selectedTabs && selectedTabs.length > 0) {
+      for (var i = 0; i < selectedTabs.length; i++) {
+        var label = tabNodeLabel(selectedTabs[i]);
+        if (isFollowingLabel(label)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    var tabs = findHomeTabs();
+    if (tabs.following) {
+      return isTabSelected(tabs.following);
+    }
+
+    return true;
+  }
+
   var lastFollowClick = 0;
   function forceFollowing() {
     // Port of changeFollowingTimeline (minimal-twitter).
@@ -1268,6 +1295,10 @@
     var t = ev.target && ev.target.closest && ev.target.closest('[role="tab"]');
     if (!t || !isHomePath()) return;
     window.__ROBIN_USER_PICKED_TAB__ = Date.now();
+    var label = tabNodeLabel(t);
+    if (!isFollowingLabel(label)) {
+      removeCaughtUpMarker();
+    }
   }
 
   /**
@@ -1633,8 +1664,10 @@
 
   // --- Caught-Up Marker (Instagram-style feed marker for last-viewed post) ---
   var SESSION_IDLE_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes of inactivity/backgrounding
+  var sessionResolvedMarkerId = null;
 
   function initCaughtUpSession() {
+    sessionResolvedMarkerId = null;
     try {
       var now = Date.now();
       var lastActive = parseInt(
@@ -1776,7 +1809,7 @@
   }
 
   function trackViewedPosts() {
-    if (!isHomePath()) return;
+    if (!isHomePath() || !isFollowingFeedActive()) return;
     var settings = currentSettings();
     if (!settings.forceFollowing) return;
 
@@ -1823,8 +1856,12 @@
   }
 
   function removeCaughtUpMarker() {
-    var marker = document.getElementById("robin-caught-up-marker");
-    if (marker) marker.remove();
+    var markers = document.querySelectorAll(
+      ".robin-caught-up-marker, #robin-caught-up-marker"
+    );
+    for (var i = 0; i < markers.length; i++) {
+      markers[i].remove();
+    }
   }
 
   function createCaughtUpMarkerElement() {
@@ -1852,7 +1889,7 @@
   }
 
   function updateCaughtUpMarker() {
-    if (!isHomePath()) {
+    if (!isHomePath() || !isFollowingFeedActive()) {
       removeCaughtUpMarker();
       return;
     }
@@ -1880,52 +1917,103 @@
     var articles = document.querySelectorAll(
       '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
     );
-    if (!articles || !articles.length) return;
+    if (!articles || !articles.length) {
+      removeCaughtUpMarker();
+      return;
+    }
 
-    // 1. Look for exact matching status ID
+    var effectiveTargetId = sessionResolvedMarkerId || targetId;
+
+    // 1. Look for exact matching status ID (or already resolved boundary ID)
     var targetArticle = null;
     for (var i = 0; i < articles.length; i++) {
       var art = articles[i];
       if (isArticleHidden(art)) continue;
-      if (statusIdFromArticle(art) === targetId) {
+      if (art.offsetHeight < 1) continue;
+      var aId = statusIdFromArticle(art);
+      if (aId && (aId === targetId || aId === effectiveTargetId)) {
         targetArticle = art;
+        sessionResolvedMarkerId = aId;
         break;
       }
     }
 
-    // 2. Fallback: if exact tweet not found (deleted or missing), find first older post
-    if (!targetArticle) {
+    // 2. Fallback: ONLY if we haven't locked onto a resolved boundary ID yet,
+    // look for a valid chronological boundary (a newer post followed by an older post).
+    // NEVER match arbitrary older posts if the user simply scrolled past the marker.
+    if (!targetArticle && !sessionResolvedMarkerId) {
       for (var j = 0; j < articles.length; j++) {
         var a = articles[j];
         if (isArticleHidden(a)) continue;
         if (isArticleRepost(a)) continue;
-        var aId = statusIdFromArticle(a);
-        var aTime = timestampFromArticle(a);
-        if (!aId) continue;
-        if (isPostOlderOrEqual(aId, aTime, targetId, targetTime)) {
-          targetArticle = a;
-          break;
+        var curId = statusIdFromArticle(a);
+        var curTime = timestampFromArticle(a);
+        if (!curId) continue;
+
+        if (isPostOlderOrEqual(curId, curTime, targetId, targetTime)) {
+          var isBoundary = false;
+          if (j === 0) {
+            // First post in the timeline: only a valid boundary if user is at the top of the feed
+            var scrollY =
+              window.pageYOffset ||
+              (document.documentElement && document.documentElement.scrollTop) ||
+              0;
+            if (scrollY < 150) {
+              isBoundary = true;
+            }
+          } else {
+            // Verify that a previous visible post was newer than targetId
+            for (var k = j - 1; k >= 0; k--) {
+              var prev = articles[k];
+              if (isArticleHidden(prev)) continue;
+              var prevId = statusIdFromArticle(prev);
+              var prevTime = timestampFromArticle(prev);
+              if (prevId && isPostNewer(prevId, prevTime, targetId, targetTime)) {
+                isBoundary = true;
+                break;
+              }
+            }
+          }
+
+          if (isBoundary) {
+            targetArticle = a;
+            sessionResolvedMarkerId = curId;
+            break;
+          }
         }
       }
     }
 
+    // If target post is not currently mounted (user is scrolled above or below it),
+    // remove any markers so stale/recycled cells don't display a rogue marker.
     if (!targetArticle) {
-      // Target post hasn't mounted yet; user hasn't scrolled far enough
+      removeCaughtUpMarker();
       return;
     }
 
     var parent = targetArticle.parentElement;
     if (!parent) return;
 
-    var marker = document.getElementById("robin-caught-up-marker");
-    if (!marker) {
-      marker = createCaughtUpMarkerElement();
+    // Remove any duplicate or misplaced markers in the document
+    var allMarkers = document.querySelectorAll(
+      ".robin-caught-up-marker, #robin-caught-up-marker"
+    );
+    var marker = null;
+    for (var m = 0; m < allMarkers.length; m++) {
+      var curMarker = allMarkers[m];
+      if (
+        !marker &&
+        curMarker.parentElement === parent &&
+        curMarker.nextElementSibling === targetArticle
+      ) {
+        marker = curMarker;
+      } else {
+        curMarker.remove();
+      }
     }
 
-    if (
-      marker.parentElement !== parent ||
-      marker.nextElementSibling !== targetArticle
-    ) {
+    if (!marker) {
+      marker = createCaughtUpMarkerElement();
       parent.insertBefore(marker, targetArticle);
     }
   }

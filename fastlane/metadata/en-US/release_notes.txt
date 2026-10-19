@@ -1,1 +1,1 @@
-Clarify keyword filter description in Settings.
+Fix in-feed caught-up marker duplication and limit to Following feed.
