@@ -294,12 +294,19 @@
   }
 
   function isFollowingLabel(label) {
+    if (!label) return false;
+    var l = label.toLowerCase().trim();
     return (
-      label === "following" ||
-      label === "フォロー中" ||
-      label === "seguindo" ||
-      label === "abonnements" ||
-      label === "siguiendo"
+      l === "following" ||
+      l.indexOf("following") !== -1 ||
+      l === "フォロー中" ||
+      l.indexOf("フォロー中") !== -1 ||
+      l === "seguindo" ||
+      l.indexOf("seguindo") !== -1 ||
+      l === "abonnements" ||
+      l.indexOf("abonnements") !== -1 ||
+      l === "siguiendo" ||
+      l.indexOf("siguiendo") !== -1
     );
   }
 
