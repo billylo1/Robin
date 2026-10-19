@@ -1,1 +1,1 @@
-Improve Google sign-in navigation and Settings sheet layout.
+Clarify keyword filter description in Settings.

@@ -120,7 +120,7 @@ struct InfoSheet: View {
                     )
                 }
 
-                Section("Hide keywords") {
+                Section("Hide posts containing these keywords") {
                     HStack {
                         TextField("Keyword or phrase", text: $keywordDraft)
                             .textInputAutocapitalization(.never)

@@ -11,39 +11,44 @@
 
 ## Why
 
-X is useful for staying current. Unfortunately, its default experience include a lot of distractions — promoted posts and pile-ons from people or non-human accounts you never followed. These distractions are not good for us. Some posts are half-truths, some replies are designed to trigger strong emotions intentionally. I think we can do better.
+X is still one of the fastest places to follow live events and hear directly from domain experts. But the default experience has devolved into heavy information pollution: algorithmic clickbait, sponsored posts, bot amplification, and endless replies from accounts you never chose to follow.
 
-Robin is built around three things that matter:
+When our daily information diet shapes our worldview, that noise takes a real toll. Half-truths spread faster than corrections, and recommendation engines are optimized to provoke emotional reactions rather than keep us informed. Robin is built to fight this information pollution: preserve the essential signals you actually care about, strip away algorithmic distractions, and give you back control over your attention.
 
-1. **Up-to-date news** — without the distractions from people you never chose to listen from
-2. **A promotion-free experience** — no sponsored content mixed into your timeline to influence
-3. **No algorithmic feed** — nothing added by an algorithm, the ordering is purely chronological.
+Robin is guided by a few core principles:
 
-Because we use our information stream to form opinions; it's very valuable to have a neutral feed.
+1. **Chronological signal over algorithmic manipulation**: A pure Following feed in true reverse-chronological order. No recommendation engine deciding what you see next.
+2. **Promotion-free timeline**: Promoted posts and ad clutter are removed so your timeline only reflects the people and publications you follow.
+3. **Keyword filtering**: Filter out topics, rage bait or noise by hiding posts containing your choice of keywords.
+4. **Less doomscrolling**: An in-feed marker ("You're all caught up") indicates when you have reached posts from your previous visit, giving you a clear stopping point instead of scrolling forever.
+5. **On-demand fact-checking**: When a post seems dubious or sensational, long-press it to check claims against live web search evidence and credibility scores powered by generative AI.
 
-Robin is a native **Android** and **iOS** client: an x.com WebView with filters that force the Following timeline and hide promoted noise. Sign-in is your normal X cookie session inside the WebView — there is no separate Robin backend.
+Robin is a native **Android** and **iOS** client: an x.com WebView with client-side filters. Sign-in happens directly inside the WebView with your normal X cookie session.
 
 ### How much of For You is actually from people you follow?
 
-To put a number on the noise: we scrolled one logged-in **For You** home timeline (~87 posts), labeled each item as an ad (explicit “Ad”), checked each author against that account’s follow graph, and tallied the mix.
+To put a number on the noise: we scrolled one logged-in **For You** home timeline (~87 posts), labeled each item as an ad (explicit "Ad"), checked each author against that account's follow graph, and tallied the mix.
 
 | What you see on For You | Share of posts |
 | --- | ---: |
 | People you follow | **~10%** |
 | Algorithmic inserts (accounts you do not follow) | **~70%** |
-| Network inserts (e.g. “X reposted”) | **~1%** |
+| Network inserts (e.g. "X reposted") | **~1%** |
 | Ads | **~18%** |
 
-In other words, only about **one in ten** posts on For You came from someone that account chose to follow. Roughly **nine in ten** were algorithm add-ons, ads, or similar. (One scroll session — your mix will vary — but the shape of the problem is hard to miss.)
+In other words, only about **one in ten** posts on For You came from someone that account chose to follow. Roughly **nine in ten** were algorithm add-ons, ads, or similar. (One scroll session: your mix will vary, but the shape of the problem is hard to miss.)
 
-I hope Robin can help stay informed, without getting distracted/annoyed by random posts and replies from strangers.
+I hope Robin helps you stay informed without the mental exhaustion of sorting through noise and distractions.
 
 **Architecture:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · **Mobile setup:** [docs/mobile.md](docs/mobile.md) · **WebView filters:** [docs/webview-filter.md](docs/webview-filter.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Security:** [SECURITY.md](SECURITY.md)
 
 ## Features
 
-- Following-first feed via injected filters on x.com (force Following / Latest, hide For You)
+- Following-first feed via filters on x.com (force Following / Latest, hide For You)
 - Hide promoted posts, page chrome, compose prompts, and related clutter
+- Keyword filtering to hide posts containing specified words or phrases
+- In-feed "You're all caught up" divider marking where you left off last visit to reduce doomscrolling
+- Long-press any post to fact-check claims with generative AI and live web search evidence
 - Text size controls
 - Sign out clears the X WebView cookie session
 - Optional Sentry and Aptabase (off unless you configure them locally)

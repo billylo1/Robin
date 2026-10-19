@@ -1,3 +1,4 @@
+Clarify keyword filter description in Settings.
 Improve Google sign-in navigation and Settings sheet layout.
 Fix launch flickering and smooth transition to feed.
 Fix long-press gesture timing and haptic feedback triggering fact check.
