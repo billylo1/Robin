@@ -134,11 +134,12 @@ html.mt-hide-compose a[href="/compose/post/"] {
 /*
  * Boot gate: hide X until filter settles Following / Latest / chrome hides.
  * Native hosts show their own cover while this is active.
+ * Only applies on the home timeline; other routes (compose, profiles, auth) stay visible.
  */
-html:not([data-mt-boot-ready="1"]) body {
+html[data-mt-home="1"]:not([data-mt-boot-ready="1"]) body {
   visibility: hidden !important;
 }
-html[data-mt-boot-ready="1"] body {
+html[data-mt-home="1"][data-mt-boot-ready="1"] body {
   visibility: visible !important;
 }
 

@@ -86,12 +86,9 @@ targets:
         SENTRY_DSN: $(SENTRY_DSN)
         APTABASE_APP_KEY: $(APTABASE_APP_KEY)
         APTABASE_HOST: $(APTABASE_HOST)
+        APP_CHECK_DEBUG_TOKEN: $(APP_CHECK_DEBUG_TOKEN)
         # Standard HTTPS only — answers the App Store Connect export-compliance prompt.
         ITSAppUsesNonExemptEncryption: false
-        CFBundleURLTypes:
-          - CFBundleURLName: org.evergreenlabs.robin.auth
-            CFBundleURLSchemes:
-              - robin
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

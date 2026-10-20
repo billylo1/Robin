@@ -65,19 +65,27 @@ object XFilterInjector {
                 if (root) {
                   // Android WebView paint path (see filter-core.css). iOS does not set this.
                   root.classList.add('mt-android-webview');
-                  // Full navigations re-run bootstrap; mask until filter boot settles.
-                  // Skip if filter already installed (may evaluate bootstrap twice).
-                  if (!window.__ROBIN_FILTER_INSTALLED__) {
-                    root.removeAttribute('data-mt-boot-ready');
+                  var p = location.pathname || '';
+                  var home = p === '/' || p === '/home' || p.indexOf('/home') === 0;
+                  if (home) {
+                    root.setAttribute('data-mt-home', '1');
+                    // Full home navigations re-run bootstrap; mask until filter boot settles.
+                    if (!window.__ROBIN_FILTER_INSTALLED__) {
+                      root.removeAttribute('data-mt-boot-ready');
+                    }
+                  } else {
+                    root.removeAttribute('data-mt-home');
+                    root.setAttribute('data-mt-boot-ready', '1');
                   }
                   var cfg = window.__ROBIN_SETTINGS__ || {};
                   root.classList.toggle('mt-hide-page-header', !!cfg.hidePageHeader);
                   root.classList.add('mt-hide-compose');
-                  var p = location.pathname || '';
-                  var home = p === '/' || p === '/home' || p.indexOf('/home') === 0;
-                  if (home) root.setAttribute('data-mt-home', '1');
                   if (home && cfg.hidePageHeader && cfg.forceFollowing && cfg.preferLatest) {
                     root.setAttribute('data-mt-defer-feed-chrome', '1');
+                  }
+                  var scale = cfg.fontScale;
+                  if (typeof scale === 'number' && scale > 0 && scale !== 1) {
+                    root.style.zoom = String(scale);
                   }
                 }
               } catch (e) {}

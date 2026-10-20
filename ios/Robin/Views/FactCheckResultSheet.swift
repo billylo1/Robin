@@ -350,8 +350,29 @@ private struct OpaqueSheetBackground: ViewModifier {
 private struct SearchSuggestionsWebView: UIViewRepresentable {
     let html: String
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction,
+            decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+        ) {
+            if let url = navigationAction.request.url,
+               navigationAction.navigationType == .linkActivated {
+                UIApplication.shared.open(url)
+                decisionHandler(.cancel)
+                return
+            }
+            decisionHandler(.allow)
+        }
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let webView = WKWebView(frame: .zero)
+        webView.navigationDelegate = context.coordinator
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.isScrollEnabled = false

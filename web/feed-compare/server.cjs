@@ -175,7 +175,7 @@ function send(res, status, body, type) {
 function serveStatic(res, pathname) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
   const file = path.normalize(path.join(PUBLIC, rel));
-  if (!file.startsWith(PUBLIC)) return send(res, 403, 'no', 'text/plain');
+  if (file !== PUBLIC && !file.startsWith(PUBLIC + path.sep)) return send(res, 403, 'Forbidden', 'text/plain');
   const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
   fs.readFile(file, (err, data) => {
     if (err) return send(res, 404, 'not found', 'text/plain');
@@ -183,7 +183,37 @@ function serveStatic(res, pathname) {
   });
 }
 
+function isAllowedRequestOrigin(req) {
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      if (u.hostname !== HOST && u.hostname !== 'localhost') return false;
+    } catch {
+      return false;
+    }
+  }
+  const referer = req.headers.referer;
+  if (referer) {
+    try {
+      const u = new URL(referer);
+      if (u.hostname !== HOST && u.hostname !== 'localhost') return false;
+    } catch {
+      return false;
+    }
+  }
+  const host = req.headers.host;
+  if (host) {
+    const hostName = host.split(':')[0];
+    if (hostName !== HOST && hostName !== 'localhost') return false;
+  }
+  return true;
+}
+
 const server = http.createServer(async (req, res) => {
+  if (!isAllowedRequestOrigin(req)) {
+    return send(res, 403, { error: 'Forbidden origin or host header.' }, 'json');
+  }
   const url = new URL(req.url, `http://${HOST}`);
   try {
     if (req.method === 'GET' && url.pathname === '/api/state') {

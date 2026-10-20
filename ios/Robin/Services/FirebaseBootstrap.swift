@@ -20,19 +20,19 @@ private final class RobinAppCheckProviderFactory: NSObject, AppCheckProviderFact
 }
 
 enum FirebaseBootstrap {
-    /// Pre-registered in Firebase Console → App Check → Robin iOS → Manage debug tokens
-    /// DEBUG builds only.
-    private static let debugAppCheckToken = "93B25776-9789-4595-B9EA-B08C4CE49B49"
-
     static func configure() {
         guard FirebaseApp.app() == nil else { return }
 
         #if DEBUG
-        // Prefer scheme env (`AppCheckDebugToken`); otherwise pin the shared registered token
-        // so simulator launches via simctl / without the Xcode scheme still pass App Check.
+        // Check scheme / process env (`AppCheckDebugToken`), or local xcconfig.
+        // If unset, AppCheckDebugProvider automatically logs a newly generated debug secret to the console.
         let env = ProcessInfo.processInfo.environment
         if env["AppCheckDebugToken"] == nil, env["FIRAAppCheckDebugToken"] == nil {
-            setenv("AppCheckDebugToken", debugAppCheckToken, 1)
+            if let customToken = (Bundle.main.object(forInfoDictionaryKey: "APP_CHECK_DEBUG_TOKEN") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !customToken.isEmpty, !customToken.contains("$("), !customToken.localizedCaseInsensitiveContains("YOUR_") {
+                setenv("AppCheckDebugToken", customToken, 1)
+            }
         }
         #endif
 

@@ -5,3 +5,5 @@
 SENTRY_DSN =
 APTABASE_APP_KEY =
 APTABASE_HOST =
+// Optional App Check debug token for simulator testing (leave blank to generate dynamically)
+APP_CHECK_DEBUG_TOKEN =

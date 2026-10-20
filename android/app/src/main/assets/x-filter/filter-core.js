@@ -1028,6 +1028,43 @@
     }
   }
 
+  function openComposeModal() {
+    var selectors = [
+      'a[data-testid="FloatingActionButton_compose"]',
+      'a[data-testid="SideNav_NewTweet_Button"]',
+      'a[href="/compose/post"]',
+      'a[href="/compose/tweet"]',
+      'a[href="/compose/post/"]',
+      'a[href*="/compose/"]'
+    ];
+    for (var i = 0; i < selectors.length; i++) {
+      var el = document.querySelector(selectors[i]);
+      if (el) {
+        el.click();
+        return true;
+      }
+    }
+    var inline = document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                 document.querySelector('div[role="textbox"][contenteditable="true"]');
+    if (inline) {
+      inline.focus();
+      return true;
+    }
+    reportToSentry(
+      "X DOM: No compose button or input found in DOM; falling back to synthetic link",
+      "warning",
+      { tag: "compose_missing_button" }
+    );
+    var a = document.createElement("a");
+    a.href = "/compose/post";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return true;
+  }
+  window.__ROBIN_OPEN_COMPOSE__ = openComposeModal;
+
   var chromePassHref = "";
 
   function hidePageHeaderFallback() {
@@ -1494,6 +1531,42 @@
     } catch (e) {}
   }
 
+  // --- DOM Diagnostic & Sentry Telemetry Bridge ---
+  var reportedSentryKeys = {};
+  function reportToSentry(message, level, extra) {
+    try {
+      var dedupeKey = message + ":" + (extra && extra.tag ? extra.tag : "");
+      if (reportedSentryKeys[dedupeKey]) return;
+      reportedSentryKeys[dedupeKey] = true;
+
+      var payload = {
+        message: message,
+        level: level || "warning",
+        extra: Object.assign(
+          {
+            url: location.href,
+            pathname: location.pathname,
+            bootElapsedMs: Date.now() - (bootStart || 0),
+            hasFeedContent: typeof hasFeedContent === "function" ? hasFeedContent() : false,
+            hasTweets: !!document.querySelector('article[data-testid="tweet"]'),
+          },
+          extra || {}
+        ),
+      };
+
+      if (
+        window.webkit &&
+        window.webkit.messageHandlers &&
+        window.webkit.messageHandlers.robinSentry
+      ) {
+        window.webkit.messageHandlers.robinSentry.postMessage(payload);
+      }
+      if (window.RobinSentry && window.RobinSentry.postMessage) {
+        window.RobinSentry.postMessage(JSON.stringify(payload));
+      }
+    } catch (e) {}
+  }
+
   function notifyBootReady() {
     try {
       if (
@@ -1630,7 +1703,25 @@
     var elapsed = Date.now() - bootStart;
     // Hard timeout still reveals a real empty account. A welcome retry's
     // stale mtBoot is ignored by the host via bootNonce.
-    if (elapsed >= BOOT_HARD_MS) return true;
+    if (elapsed >= BOOT_HARD_MS) {
+      if (
+        isHomePath() &&
+        !hasFeedContent() &&
+        !hasLoginCta() &&
+        !isWelcomeInterstitial()
+      ) {
+        var tabs = typeof findHomeTabs === "function" ? findHomeTabs() : {};
+        reportToSentry(
+          "X DOM: Home timeline failed to settle feed content within boot timeout",
+          "warning",
+          {
+            tag: "boot_timeout_empty_feed",
+            tabsFound: !!(tabs.following || tabs.forYou),
+          }
+        );
+      }
+      return true;
+    }
     if (welcomeRetrySent || isWelcomeInterstitial()) return false;
     if (!isHomePath()) return true;
     if (hasLoginCta()) return true;
@@ -2167,6 +2258,41 @@
     maybeRetryWelcome();
     maybeRevealBoot();
     notePinChrome();
+    checkDOMHealth();
+  }
+
+  var reportedTabsMissing = false;
+  var reportedCellsMissing = false;
+  function checkDOMHealth() {
+    if (!isHomePath()) return;
+    if (hasLoginCta() || isWelcomeInterstitial()) return;
+
+    // Check tabs after settle period (4 seconds)
+    if (!reportedTabsMissing && Date.now() - bootStart >= 4000) {
+      var tabs = typeof findHomeTabs === "function" ? findHomeTabs() : {};
+      if (!tabs.following && !tabs.forYou) {
+        reportedTabsMissing = true;
+        reportToSentry(
+          "X DOM: Following/For You tabs not found on home feed",
+          "warning",
+          { tag: "home_tabs_missing" }
+        );
+      }
+    }
+
+    // Check cells/tweets after boot revealed + 3 seconds
+    if (!reportedCellsMissing && bootRevealed && Date.now() - bootReadyAt >= 3000) {
+      var tweets = document.querySelectorAll('article[data-testid="tweet"]');
+      var cells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
+      if (tweets.length === 0 && cells.length === 0) {
+        reportedCellsMissing = true;
+        reportToSentry(
+          "X DOM: No tweets or cellInnerDiv containers found on home feed after boot",
+          "warning",
+          { tag: "timeline_empty_cells" }
+        );
+      }
+    }
   }
 
   document.addEventListener("click", onUserTabClick, true);

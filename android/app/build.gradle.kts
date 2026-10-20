@@ -71,6 +71,13 @@ val aptabaseHost: String =
         ),
     )
 
+val appCheckDebugToken: String =
+    escapeBuildConfigString(
+        (localProperties.getProperty("appcheck.debugToken")
+            ?: System.getenv("APP_CHECK_DEBUG_TOKEN")
+            ?: "").trim(),
+    )
+
 android {
     namespace = "org.evergreenlabs.robin"
     compileSdk = 36
@@ -84,6 +91,7 @@ android {
         buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
         buildConfigField("String", "APTABASE_APP_KEY", "\"$aptabaseAppKey\"")
         buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
+        buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"$appCheckDebugToken\"")
     }
 
     signingConfigs {

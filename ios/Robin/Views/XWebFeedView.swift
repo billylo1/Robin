@@ -1,4 +1,5 @@
 import SafariServices
+import Sentry
 import SwiftUI
 import UIKit
 import WebKit
@@ -27,7 +28,6 @@ private func openInAppBrowser(_ url: URL, from webView: WKWebView?) {
 }
 
 private let xHomeURL = URL(string: "https://x.com/home")!
-private let xComposeURL = URL(string: "https://x.com/compose/post")!
 
 /// Home / Following timeline — native back should not return to login from here.
 private func isFeedHome(_ url: URL?) -> Bool {
@@ -49,10 +49,15 @@ private func isAuthFlow(_ url: URL?) -> Bool {
         || s.contains("appleid.apple.com")
 }
 
+private let googleOAuthCctldRegex = try? NSRegularExpression(pattern: #"^accounts\.google\.[a-z]{2,3}(\.[a-z]{2})?$"#)
+
 /// Matches google.com and regional Google ccTLDs used by OAuth SetSID (e.g. accounts.google.ca, accounts.google.co.uk).
 private func isGoogleHost(_ host: String) -> Bool {
     if host == "google.com" || host.hasSuffix(".google.com") { return true }
-    if host.hasPrefix("accounts.google.") || host.contains(".google.") { return true }
+    if let regex = googleOAuthCctldRegex,
+       regex.firstMatch(in: host, range: NSRange(location: 0, length: host.utf16.count)) != nil {
+        return true
+    }
     return false
 }
 
@@ -78,7 +83,7 @@ private func isAllowedWebViewURL(_ url: URL) -> Bool {
     }
     let scheme = (url.scheme ?? "").lowercased()
     if scheme == "http" || scheme == "https" {
-        guard let host = url.host?.lowercased(), !host.isEmpty else { return true }
+        guard let host = url.host?.lowercased(), !host.isEmpty else { return false }
         if isGoogleHost(host) { return true }
         let allowedExact: Set<String> = [
             "x.com", "twitter.com", "api.x.com", "api.twitter.com",
@@ -88,7 +93,7 @@ private func isAllowedWebViewURL(_ url: URL) -> Bool {
         if allowedExact.contains(host) { return true }
         let allowedSuffixes = [
             ".x.com", ".twitter.com",
-            ".google.com", ".googleusercontent.com", ".googleapis.com", ".gstatic.com", ".youtube.com",
+            ".google.com", ".googleapis.com", ".gstatic.com", ".youtube.com",
             ".apple.com", ".cdn-apple.com",
         ]
         for suffix in allowedSuffixes {
@@ -467,11 +472,57 @@ struct XWebFeedView: View {
         }
     }
 
+    private static let openComposeJS = """
+    (function() {
+      try {
+        if (typeof window.__ROBIN_OPEN_COMPOSE__ === 'function') {
+          return window.__ROBIN_OPEN_COMPOSE__();
+        }
+        var selectors = [
+          'a[data-testid="FloatingActionButton_compose"]',
+          'a[data-testid="SideNav_NewTweet_Button"]',
+          'a[href="/compose/post"]',
+          'a[href="/compose/tweet"]',
+          'a[href="/compose/post/"]',
+          'a[href*="/compose/"]'
+        ];
+        for (var i = 0; i < selectors.length; i++) {
+          var el = document.querySelector(selectors[i]);
+          if (el) {
+            el.click();
+            return true;
+          }
+        }
+        var inline = document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                     document.querySelector('div[role="textbox"][contenteditable="true"]');
+        if (inline) {
+          inline.focus();
+          return true;
+        }
+        var a = document.createElement("a");
+        a.href = "/compose/post";
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        return true;
+      } catch (e) {
+        return false;
+      }
+    })();
+    """
+
     private func openCompose() {
         guard let webView else { return }
         Analytics.track("compose_opened")
         noteUserInteraction()
-        webView.load(URLRequest(url: xComposeURL))
+        webView.evaluateJavaScript(Self.openComposeJS) { result, error in
+            if let error {
+                NSLog("XWebFeed openCompose error: %@", error.localizedDescription)
+            } else {
+                NSLog("XWebFeed openCompose result: \(String(describing: result))")
+            }
+        }
     }
 
     /// Automatic refreshes wait until the user has left the feed alone.
@@ -751,6 +802,10 @@ private struct XWebViewRepresentable: UIViewRepresentable {
             context.coordinator,
             name: "robinFactCheck"
         )
+        config.userContentController.add(
+            context.coordinator,
+            name: "robinSentry"
+        )
         config.userContentController.addUserScript(
             WKUserScript(
                 source: XWebFeedView.scrollProbeJS,
@@ -800,6 +855,8 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         ucc.removeScriptMessageHandler(forName: "mtBoot")
         ucc.removeScriptMessageHandler(forName: "mtRetry")
         ucc.removeScriptMessageHandler(forName: "mtInteract")
+        ucc.removeScriptMessageHandler(forName: "robinFactCheck")
+        ucc.removeScriptMessageHandler(forName: "robinSentry")
     }
 }
 
@@ -867,6 +924,16 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        let originHost = message.frameInfo.securityOrigin.host.lowercased()
+        let isXOrigin = originHost == "x.com" || originHost.hasSuffix(".x.com")
+            || originHost == "twitter.com" || originHost.hasSuffix(".twitter.com")
+        guard isXOrigin else { return }
+
+        // Boot, retry, fact-check, and Sentry diagnostics must only be accepted from the main frame
+        if message.name == "robinFactCheck" || message.name == "robinSentry" || message.name == "mtBoot" || message.name == "mtRetry" {
+            guard message.frameInfo.isMainFrame else { return }
+        }
+
         if message.name == "robinFactCheck" {
             let dict = message.body as? [String: Any] ?? [:]
             let text = dict["text"] as? String ?? ""
@@ -879,6 +946,22 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             DispatchQueue.main.async {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 self.onFactCheck(FactCheckRequest(text: text, author: author, tweetURL: tweetURL, externalLinks: links))
+            }
+            return
+        }
+        if message.name == "robinSentry" {
+            guard let dict = message.body as? [String: Any],
+                  let msg = dict["message"] as? String, !msg.isEmpty else { return }
+            let levelStr = (dict["level"] as? String ?? "warning").lowercased()
+            let extra = dict["extra"] as? [String: Any] ?? [:]
+            NSLog("XWebFeed DOM Diagnostic [%@]: %@ %@", levelStr, msg, extra)
+            let level: SentryLevel = levelStr == "error" ? .error : .warning
+            SentrySDK.capture(message: msg) { scope in
+                scope.setLevel(level)
+                scope.setTag(value: "dom_diagnostic", key: "source")
+                for (k, v) in extra {
+                    scope.setExtra(value: v, key: k)
+                }
             }
             return
         }

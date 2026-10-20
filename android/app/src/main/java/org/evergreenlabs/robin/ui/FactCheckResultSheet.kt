@@ -438,6 +438,22 @@ private fun SearchSuggestionsWebView(
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                webViewClient = object : android.webkit.WebViewClient() {
+                    override fun shouldOverrideUrlLoading(
+                        view: WebView?,
+                        request: android.webkit.WebResourceRequest?,
+                    ): Boolean {
+                        val url = request?.url?.toString().orEmpty()
+                        if (url.startsWith("http://") || url.startsWith("https://")) {
+                            runCatching {
+                                val customTabsIntent = CustomTabsIntent.Builder().setShowTitle(true).build()
+                                customTabsIntent.launchUrl(context, Uri.parse(url))
+                            }
+                            return true
+                        }
+                        return false
+                    }
+                }
                 loadDataWithBaseURL(
                     "https://www.google.com",
                     html,

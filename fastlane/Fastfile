@@ -378,14 +378,15 @@ platform :ios do
     key_id, issuer_id, key_filepath = asc_credentials
     metadata_path = File.join(PROJECT_ROOT, "fastlane/metadata")
     json_path = File.join(Dir.tmpdir, "asc_api_key_#{Process.pid}.json")
-    File.write(
-      json_path,
-      JSON.generate(
-        "key_id" => key_id,
-        "issuer_id" => issuer_id,
-        "key" => File.read(key_filepath)
+    File.open(json_path, File::WRONLY | File::CREAT | File::TRUNC, 0600) do |f|
+      f.write(
+        JSON.generate(
+          "key_id" => key_id,
+          "issuer_id" => issuer_id,
+          "key" => File.read(key_filepath)
+        )
       )
-    )
+    end
     begin
       sh(
         "cd #{Shellwords.escape(PROJECT_ROOT)} && " \

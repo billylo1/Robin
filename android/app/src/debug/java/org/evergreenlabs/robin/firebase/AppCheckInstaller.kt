@@ -4,33 +4,38 @@ import android.content.Context
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import org.evergreenlabs.robin.BuildConfig
 
 /**
- * Debug App Check: seed a pre-registered debug secret, then install the debug provider.
- * Token is registered in Firebase Console as "Robin Android Debug Token" for robin-evergreen.
+ * Debug App Check: if an App Check debug token is configured in local.properties (appcheck.debugToken)
+ * or via environment variable APP_CHECK_DEBUG_TOKEN, seed it into the debug store.
+ * Otherwise, DebugAppCheckProviderFactory dynamically generates a debug secret and logs it to Logcat
+ * for registration in the Firebase Console.
  */
 internal object AppCheckInstaller {
-    private const val DEBUG_TOKEN = "0F3D60D9-B3A2-4900-890B-E4706A01C0DC"
     private const val PREFS_PREFIX = "com.google.firebase.appcheck.debug.store."
     private const val PREFS_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
 
     fun install(appCheck: FirebaseAppCheck) {
         val app = FirebaseApp.getInstance()
-        seedRegisteredDebugToken(app)
+        val configuredToken = BuildConfig.APP_CHECK_DEBUG_TOKEN.trim()
+        if (configuredToken.isNotEmpty()) {
+            seedRegisteredDebugToken(app, configuredToken)
+        }
         appCheck.installAppCheckProviderFactory(
             DebugAppCheckProviderFactory.getInstance(),
         )
     }
 
-    private fun seedRegisteredDebugToken(app: FirebaseApp) {
+    private fun seedRegisteredDebugToken(app: FirebaseApp, token: String) {
         val prefs = app.applicationContext.getSharedPreferences(
             PREFS_PREFIX + app.persistenceKey,
             Context.MODE_PRIVATE,
         )
         val existing = prefs.getString(PREFS_SECRET_KEY, null)
-        if (existing == DEBUG_TOKEN) return
+        if (existing == token) return
         prefs.edit()
-            .putString(PREFS_SECRET_KEY, DEBUG_TOKEN)
+            .putString(PREFS_SECRET_KEY, token)
             .apply()
     }
 }

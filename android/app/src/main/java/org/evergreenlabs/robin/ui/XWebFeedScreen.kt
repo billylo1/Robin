@@ -1,13 +1,16 @@
 package org.evergreenlabs.robin.ui
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.os.Build
 import android.os.Handler
@@ -20,6 +23,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -33,6 +37,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import io.sentry.Sentry
+import io.sentry.SentryLevel
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -110,6 +116,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 import org.evergreenlabs.robin.Analytics
 import org.evergreenlabs.robin.AppGraph
 import org.evergreenlabs.robin.R
@@ -125,10 +133,49 @@ import java.util.Locale
 
 private const val TAG = "XWebFeed"
 private const val X_HOME = "https://x.com/home"
-private const val X_COMPOSE = "https://x.com/compose/post"
 private const val NEAR_TOP_PX = 80
 private const val SCROLL_TOP_BUTTON_PX = 400
 private const val WARM_CROSSFADE_MS = 450
+
+private val OPEN_COMPOSE_JS = """
+(function() {
+  try {
+    if (typeof window.__ROBIN_OPEN_COMPOSE__ === 'function') {
+      return window.__ROBIN_OPEN_COMPOSE__();
+    }
+    var selectors = [
+      'a[data-testid="FloatingActionButton_compose"]',
+      'a[data-testid="SideNav_NewTweet_Button"]',
+      'a[href="/compose/post"]',
+      'a[href="/compose/tweet"]',
+      'a[href="/compose/post/"]',
+      'a[href*="/compose/"]'
+    ];
+    for (var i = 0; i < selectors.length; i++) {
+      var el = document.querySelector(selectors[i]);
+      if (el) {
+        el.click();
+        return true;
+      }
+    }
+    var inline = document.querySelector('[data-testid="tweetTextarea_0"]') ||
+                 document.querySelector('div[role="textbox"][contenteditable="true"]');
+    if (inline) {
+      inline.focus();
+      return true;
+    }
+    var a = document.createElement("a");
+    a.href = "/compose/post";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return true;
+  } catch (e) {
+    return false;
+  }
+})();
+""".trimIndent()
 
 /** Reports scrollY from nested X containers (window scroll often stays at 0). */
 private val SCROLL_PROBE_JS = """
@@ -263,6 +310,34 @@ private class FactCheckBridge(
     }
 }
 
+private class SentryBridge {
+    private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun postMessage(jsonStr: String) {
+        main.post {
+            runCatching {
+                val json = JSONObject(jsonStr)
+                val message = json.optString("message", "").trim()
+                if (message.isEmpty()) return@runCatching
+                val levelStr = json.optString("level", "warning").lowercase()
+                val level = if (levelStr == "error") SentryLevel.ERROR else SentryLevel.WARNING
+                val extra = json.optJSONObject("extra")
+                Log.w("RobinSentry", "DOM Diagnostic [$levelStr]: $message ${extra ?: ""}")
+                Sentry.captureMessage(message) { scope ->
+                    scope.level = level
+                    scope.setTag("source", "dom_diagnostic")
+                    extra?.keys()?.forEach { key ->
+                        scope.setExtra(key, extra.opt(key)?.toString() ?: "")
+                    }
+                }
+            }.onFailure { e ->
+                Log.e("RobinSentry", "Failed to forward DOM diagnostic to Sentry", e)
+            }
+        }
+    }
+}
+
 /**
  * After a welcome-state reload, ignore `ready` from the document we left.
  * Filter-core stamps each document with `window.__ROBIN_BOOT_NONCE__`.
@@ -357,10 +432,12 @@ private fun isXHost(url: String?): Boolean {
         host == "twitter.com" || host.endsWith(".twitter.com")
 }
 
+private val GOOGLE_OAUTH_CCTLD_REGEX = Regex("""^accounts\.google\.[a-z]{2,3}(\.[a-z]{2})?$""")
+
 /** Matches google.com and regional Google ccTLDs used by OAuth SetSID (e.g. accounts.google.ca, accounts.google.co.uk). */
 private fun isGoogleHost(host: String): Boolean {
     if (host == "google.com" || host.endsWith(".google.com")) return true
-    if (host.startsWith("accounts.google.") || host.contains(".google.")) return true
+    if (GOOGLE_OAUTH_CCTLD_REGEX.matches(host)) return true
     return false
 }
 
@@ -394,7 +471,7 @@ private fun isAllowedWebViewUrl(url: String): Boolean {
     val scheme = uri.scheme?.lowercase(Locale.US).orEmpty()
     if (scheme != "http" && scheme != "https") return false
     val host = uri.host?.lowercase(Locale.US).orEmpty()
-    if (host.isEmpty()) return true
+    if (host.isEmpty()) return false
     if (isGoogleHost(host)) return true
     val allowedExact = setOf(
         "x.com", "twitter.com", "api.x.com", "api.twitter.com",
@@ -404,7 +481,7 @@ private fun isAllowedWebViewUrl(url: String): Boolean {
     if (host in allowedExact) return true
     val allowedSuffixes = listOf(
         ".x.com", ".twitter.com",
-        ".google.com", ".googleusercontent.com", ".googleapis.com", ".gstatic.com", ".youtube.com",
+        ".google.com", ".googleapis.com", ".gstatic.com", ".youtube.com",
         ".apple.com", ".cdn-apple.com",
     )
     for (suffix in allowedSuffixes) {
@@ -800,6 +877,59 @@ fun XWebFeedScreen(
         suppressNextHomeBootCoverState.value = false
     }
 
+    suspend fun captureWebViewSnapshot(wv: WebView): Bitmap? = suspendCancellableCoroutine { cont ->
+        val activity = wv.context.findActivity()
+        val window = activity?.window
+        if (window == null || wv.width <= 0 || wv.height <= 0) {
+            val fallback = try {
+                val b = Bitmap.createBitmap(wv.width.coerceAtLeast(1), wv.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                wv.draw(Canvas(b))
+                b
+            } catch (_: Throwable) {
+                null
+            }
+            if (cont.isActive) cont.resume(fallback)
+            return@suspendCancellableCoroutine
+        }
+
+        val location = IntArray(2)
+        wv.getLocationInWindow(location)
+        val rect = Rect(location[0], location[1], location[0] + wv.width, location[1] + wv.height)
+        val bmp = Bitmap.createBitmap(wv.width, wv.height, Bitmap.Config.ARGB_8888)
+        try {
+            PixelCopy.request(
+                window,
+                rect,
+                bmp,
+                { result ->
+                    if (!cont.isActive) return@request
+                    if (result == PixelCopy.SUCCESS) {
+                        cont.resume(bmp)
+                    } else {
+                        Log.w(TAG, "PixelCopy returned status $result; falling back to software draw")
+                        try {
+                            wv.draw(Canvas(bmp))
+                            cont.resume(bmp)
+                        } catch (_: Throwable) {
+                            cont.resume(null)
+                        }
+                    }
+                },
+                Handler(Looper.getMainLooper()),
+            )
+        } catch (e: Throwable) {
+            Log.w(TAG, "PixelCopy request failed", e)
+            if (cont.isActive) {
+                try {
+                    wv.draw(Canvas(bmp))
+                    cont.resume(bmp)
+                } catch (_: Throwable) {
+                    cont.resume(null)
+                }
+            }
+        }
+    }
+
     fun hardReloadFeed(warm: Boolean, markRefresh: Boolean = true) {
         val wv = webViewRef ?: return
         if (markRefresh) lastFeedRefreshAtMs = System.currentTimeMillis()
@@ -819,12 +949,13 @@ fun XWebFeedScreen(
             // Freeze the old feed over the WebView, load underneath, and let
             // RobinBoot.ready() crossfade the snapshot away — the blank document
             // and boot-gated body are never visible.
-            val bmp = Bitmap.createBitmap(wv.width, wv.height, Bitmap.Config.ARGB_8888)
-            wv.draw(Canvas(bmp))
             suppressNextHomeBootCoverState.value = true
             warmReloadJob = scope.launch {
-                warmSnapshotAlpha.snapTo(1f)
-                warmSnapshot = bmp.asImageBitmap()
+                val bmp = captureWebViewSnapshot(wv)
+                if (bmp != null) {
+                    warmSnapshotAlpha.snapTo(1f)
+                    warmSnapshot = bmp.asImageBitmap()
+                }
                 doLoad()
                 delay(5_500)
                 if (warmSnapshot != null) {
@@ -1127,7 +1258,7 @@ fun XWebFeedScreen(
                         onClick = {
                             Analytics.track("compose_opened")
                             noteUserInteraction()
-                            webViewRef?.loadUrl(X_COMPOSE)
+                            webViewRef?.evaluateJavascript(OPEN_COMPOSE_JS, null)
                         },
                         modifier = Modifier.size(40.dp),
                     ) {
@@ -1164,12 +1295,6 @@ fun XWebFeedScreen(
                 }
             }
         }
-        if (progress in 0f..<1f && !showBootCover && warmSnapshot == null) {
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1201,6 +1326,9 @@ fun XWebFeedScreen(
                     settings.javaScriptCanOpenWindowsAutomatically = true
                     // Mobile Chrome UA so X serves TopNavBar layout (same CSS path as iOS).
                     settings.userAgentString = MOBILE_CHROME_USER_AGENT
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.textZoom = 100
                     installWebAuthnSuppression(this)
 
                     CookieManager.getInstance().setAcceptCookie(true)
@@ -1251,6 +1379,10 @@ fun XWebFeedScreen(
                             cb?.invoke(result)
                         },
                         "RobinBenchmark",
+                    )
+                    addJavascriptInterface(
+                        SentryBridge(),
+                        "RobinSentry",
                     )
 
                     webChromeClient = object : WebChromeClient() {
@@ -1689,6 +1821,15 @@ fun XWebFeedScreen(
                 )
             }
 
+            if (progress in 0f..<1f && !showBootCover && warmSnapshot == null) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter),
+                )
+            }
+
             FeedBootCover(visible = showBootCover)
         }
     }
@@ -1710,4 +1851,10 @@ fun XWebFeedScreen(
             onDismiss = { activeFactCheck = null },
         )
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

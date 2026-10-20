@@ -6,3 +6,6 @@ sentry.dsn=
 # aptabase.host=https://YOUR_APTABASE_HOST
 aptabase.appKey=
 aptabase.host=
+# Optional App Check debug token for local development (leave blank to generate dynamically)
+# appcheck.debugToken=YOUR_DEBUG_TOKEN
+appcheck.debugToken=
