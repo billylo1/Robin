@@ -63,7 +63,7 @@
 		E7DCF4F26AAD3D386F5BCCD7 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		F3E22E8D646E250837757F79 /* Robin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Robin.entitlements; sourceTree = "<group>"; };
 		FB76E59A7154998AEA2DEA8E /* Robin.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_9F0AFE9C-A9EC-41FD-8B6A-9D30DD8F053B" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		"TEMP_8E90D4CB-7CFC-45A4-A432-4F3D63AE0BB0" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -178,10 +178,10 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		"TEMP_7CCF21CA-5B31-47E9-AC08-FA84937CF74B" /* ios */ = {
+		"TEMP_61A8DAE8-ADE1-40BA-95BE-8D3DD889FC27" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_9F0AFE9C-A9EC-41FD-8B6A-9D30DD8F053B" /* Config.xcconfig */,
+				"TEMP_8E90D4CB-7CFC-45A4-A432-4F3D63AE0BB0" /* Config.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -349,7 +349,7 @@
 		};
 		C47C3DAB46D9040153520C7E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_9F0AFE9C-A9EC-41FD-8B6A-9D30DD8F053B" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_8E90D4CB-7CFC-45A4-A432-4F3D63AE0BB0" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -407,7 +407,7 @@
 		};
 		D80246C00E14E3392654CD99 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_9F0AFE9C-A9EC-41FD-8B6A-9D30DD8F053B" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_8E90D4CB-7CFC-45A4-A432-4F3D63AE0BB0" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
