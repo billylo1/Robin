@@ -1,1 +1,1 @@
-Fix in-feed caught-up marker duplication and limit to Following feed.
+Fix feed reload rendering glitch and performance improvements.

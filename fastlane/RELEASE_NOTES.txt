@@ -1,3 +1,4 @@
+Fix feed reload rendering glitch and performance improvements.
 Fix in-feed caught-up marker duplication and limit to Following feed.
 Clarify keyword filter description in Settings.
 Improve Google sign-in navigation and Settings sheet layout.

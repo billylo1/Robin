@@ -1,0 +1,1 @@
+Fix feed reload rendering glitch and performance improvements
