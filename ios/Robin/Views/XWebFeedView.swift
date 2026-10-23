@@ -266,6 +266,9 @@ struct XWebFeedView: View {
                         .resizable()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(.opacity)
+                        // Visual only — must not steal mouse hover from the WebView
+                        // during the crossfade (SwiftUI keeps exiting views hit-testable).
+                        .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
 
@@ -280,6 +283,7 @@ struct XWebFeedView: View {
                             }
                         }
                         .transition(.opacity)
+                        .allowsHitTesting(false)
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("Preparing feed")
                 }

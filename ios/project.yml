@@ -46,7 +46,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.evergreenlabs.robin
         PRODUCT_NAME: Robin
         MARKETING_VERSION: "0.2.27"
-        CURRENT_PROJECT_VERSION: "64"
+        CURRENT_PROJECT_VERSION: "65"
         INFOPLIST_FILE: Robin/Info.plist
         CODE_SIGN_ENTITLEMENTS: Robin/Robin.entitlements
         GENERATE_INFOPLIST_FILE: NO
@@ -87,6 +87,7 @@ targets:
         APTABASE_APP_KEY: $(APTABASE_APP_KEY)
         APTABASE_HOST: $(APTABASE_HOST)
         APP_CHECK_DEBUG_TOKEN: $(APP_CHECK_DEBUG_TOKEN)
+        SHOW_DEBUG_SETTINGS: $(SHOW_DEBUG_SETTINGS)
         # Standard HTTPS only — answers the App Store Connect export-compliance prompt.
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}

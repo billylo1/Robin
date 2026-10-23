@@ -12,9 +12,7 @@ struct InfoSheet: View {
     var onSignOut: () -> Void = {}
 
     @State private var keywordDraft = ""
-    #if DEBUG
     @State private var testFactCheckRequest: FactCheckRequest?
-    #endif
 
     private static let minimalTwitterURL = URL(
         string: "https://github.com/typefully/minimal-twitter"
@@ -148,92 +146,92 @@ struct InfoSheet: View {
                     }
                 }
 
-                #if DEBUG
-                Section("Performance Benchmark") {
-                    let current = chrome.benchmark.latestResult ?? chrome.benchmark.baselineResult
-                    let delta = current.deltaVs(baseline: chrome.benchmark.baselineResult)
+                if AppConfig.showDebugSettings {
+                    Section("Performance Benchmark") {
+                        let current = chrome.benchmark.latestResult ?? chrome.benchmark.baselineResult
+                        let delta = current.deltaVs(baseline: chrome.benchmark.baselineResult)
 
-                    HStack {
-                        Text("Initial load")
-                            .font(.body)
-                        Spacer()
-                        Text("\(current.initialLoadMs) ms")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.initialLoadMs > 0 {
-                            let pct = String(format: "%+.1f%%", delta.initialPct)
-                            Text("(\(pct))")
-                                .font(.caption)
-                                .foregroundStyle(delta.initialPct <= 5.0 ? .green : .red)
+                        HStack {
+                            Text("Initial load")
+                                .font(.body)
+                            Spacer()
+                            Text("\(current.initialLoadMs) ms")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.initialLoadMs > 0 {
+                                let pct = String(format: "%+.1f%%", delta.initialPct)
+                                Text("(\(pct))")
+                                    .font(.caption)
+                                    .foregroundStyle(delta.initialPct <= 5.0 ? .green : .red)
+                            }
                         }
-                    }
 
-                    HStack {
-                        Text("Scroll render settle")
-                            .font(.body)
-                        Spacer()
-                        Text("\(current.scrollRenderCompletionMs) ms")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                        if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.scrollRenderCompletionMs > 0 {
-                            let pct = String(format: "%+.1f%%", delta.scrollPct)
-                            Text("(\(pct))")
-                                .font(.caption)
-                                .foregroundStyle(delta.scrollPct <= 5.0 ? .green : .red)
+                        HStack {
+                            Text("Scroll render settle")
+                                .font(.body)
+                            Spacer()
+                            Text("\(current.scrollRenderCompletionMs) ms")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                            if chrome.benchmark.latestResult != nil && chrome.benchmark.baselineResult.scrollRenderCompletionMs > 0 {
+                                let pct = String(format: "%+.1f%%", delta.scrollPct)
+                                Text("(\(pct))")
+                                    .font(.caption)
+                                    .foregroundStyle(delta.scrollPct <= 5.0 ? .green : .red)
+                            }
                         }
-                    }
 
-                    HStack {
-                        Text("Status")
-                            .font(.body)
-                        Spacer()
-                        Text(delta.isRegressed ? "Regression" : "Optimal")
-                            .font(.subheadline)
-                            .foregroundStyle(delta.isRegressed ? .red : .green)
-                    }
+                        HStack {
+                            Text("Status")
+                                .font(.body)
+                            Spacer()
+                            Text(delta.isRegressed ? "Regression" : "Optimal")
+                                .font(.subheadline)
+                                .foregroundStyle(delta.isRegressed ? .red : .green)
+                        }
 
-                    HStack {
-                        Button {
-                            chrome.benchmark.runBenchmark()
-                        } label: {
-                            if chrome.benchmark.isRunning {
-                                HStack {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                    Text("Running…")
+                        HStack {
+                            Button {
+                                chrome.benchmark.runBenchmark()
+                            } label: {
+                                if chrome.benchmark.isRunning {
+                                    HStack {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                        Text("Running…")
+                                    }
+                                } else {
+                                    Text("Run Benchmark")
                                 }
-                            } else {
-                                Text("Run Benchmark")
                             }
-                        }
-                        .disabled(chrome.benchmark.isRunning)
-
-                        Spacer()
-
-                        if let latest = chrome.benchmark.latestResult {
-                            Button("Set as Baseline") {
-                                chrome.benchmark.setAsBaseline(latest)
-                            }
-                            .buttonStyle(.borderless)
-                            .font(.caption)
                             .disabled(chrome.benchmark.isRunning)
+
+                            Spacer()
+
+                            if let latest = chrome.benchmark.latestResult {
+                                Button("Set as Baseline") {
+                                    chrome.benchmark.setAsBaseline(latest)
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+                                .disabled(chrome.benchmark.isRunning)
+                            }
+                        }
+                    }
+
+                    Section("Fact Check (Debug Test)") {
+                        Button("Test Fact-Check on Sample Tweet") {
+                            testFactCheckRequest = FactCheckRequest(
+                                text: "NASA's James Webb Space Telescope has confirmed atmospheric water vapor on a rocky exoplanet orbiting in the habitable zone of a nearby red dwarf star.",
+                                author: "NASA Space Science @NASAWebb",
+                                tweetURL: URL(string: "https://x.com/NASAWebb/status/1880000000000000000"),
+                                externalLinks: [URL(string: "https://www.nasa.gov")!]
+                            )
                         }
                     }
                 }
-
-                Section("Fact Check (Debug Test)") {
-                    Button("Test Fact-Check on Sample Tweet") {
-                        testFactCheckRequest = FactCheckRequest(
-                            text: "NASA's James Webb Space Telescope has confirmed atmospheric water vapor on a rocky exoplanet orbiting in the habitable zone of a nearby red dwarf star.",
-                            author: "NASA Space Science @NASAWebb",
-                            tweetURL: URL(string: "https://x.com/NASAWebb/status/1880000000000000000"),
-                            externalLinks: [URL(string: "https://www.nasa.gov")!]
-                        )
-                    }
-                }
-                #endif
 
                 Section("Credits") {
                     Text("Feed filters adapted from Minimal Theme for Twitter / X by Typefully (MIT).")
@@ -266,11 +264,9 @@ struct InfoSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
-            #if DEBUG
             .sheet(item: $testFactCheckRequest) { req in
                 FactCheckSheet(request: req)
             }
-            #endif
         }
     }
 

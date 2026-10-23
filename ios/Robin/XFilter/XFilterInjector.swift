@@ -35,9 +35,9 @@ enum XFilterInjector {
               return;
             }
 
-            // Mobile identity for X's shell. Phones/iPads use real width (landscape
-            // widen); Mac freezes layout at 390 so X mounts the mobile shell — see
-            // forceMobileLayoutScript. Tab forcing only clicks label-verified tabs.
+            // Mobile identity for X's shell (UA + width). Hover/pointer stay real so
+            // mice work. Phones/iPads use real width; Mac freezes layout at 390 —
+            // see forceMobileLayoutScript. Tab forcing only clicks label-verified tabs.
             \(Self.forceMobileLayoutScript)
             window.__ROBIN_SETTINGS__ = \(settingsJSON);
             // WKWebView text ignores html zoom (glyphs stay put, line boxes grow);
@@ -87,11 +87,13 @@ enum XFilterInjector {
         """
     }
 
-    /// Document-start: mobile UA / pointer spoof so X prefers the mobile shell.
-    /// On Mac (Designed for iPhone/iPad), freeze layout identity at phone width —
-    /// a wide WebView otherwise mounts desktop/hybrid DOM while Robin hides those
-    /// rails, producing a blank primary column. On device, use real `device-width`
-    /// so landscape / tablet feeds can widen (desktop ≥1000px breakpoints stay off).
+    /// Document-start: mobile UA + width spoof so X prefers the mobile shell.
+    /// Pointer / hover media queries stay honest so mice and trackpads still get
+    /// mouseover. On Mac (Designed for iPhone/iPad), freeze layout identity at
+    /// phone width — a wide WebView otherwise mounts desktop/hybrid DOM while
+    /// Robin hides those rails, producing a blank primary column. On device, use
+    /// real `device-width` so landscape / tablet feeds can widen (desktop ≥1000px
+    /// breakpoints stay off).
     private static var forceMobileLayoutScript: String {
         let freezeMac = ProcessInfo.processInfo.isiOSAppOnMac
         return """
@@ -164,8 +166,10 @@ enum XFilterInjector {
                 if (minW >= 1000) return mql(false);
                 return mql(lw >= minW);
               }
-              if (q.indexOf('pointer: fine') !== -1 || q.indexOf('hover: hover') !== -1) return mql(false);
-              if (q.indexOf('pointer: coarse') !== -1 || q.indexOf('hover: none') !== -1) return mql(true);
+              // Do not spoof pointer/hover. Mice and trackpads are valid on phones,
+              // iPads, and Mac — X needs the real capability so mouseover / :hover work.
+              // Mobile shell is enforced via UA + width breakpoints above, not by lying
+              // about (hover: none) / (pointer: coarse).
               try { return orig(query); } catch (e) { return mql(false); }
             };
             function ensureViewport() {

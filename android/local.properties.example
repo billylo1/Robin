@@ -9,3 +9,6 @@ aptabase.host=
 # Optional App Check debug token for local development (leave blank to generate dynamically)
 # appcheck.debugToken=YOUR_DEBUG_TOKEN
 appcheck.debugToken=
+# Debug Settings chrome (benchmark). Default true in debug builds; set false for release-looking screen recordings.
+# robin.showDebugSettings=false
+robin.showDebugSettings=true

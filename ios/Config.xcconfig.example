@@ -7,3 +7,6 @@ APTABASE_APP_KEY =
 APTABASE_HOST =
 // Optional App Check debug token for simulator testing (leave blank to generate dynamically)
 APP_CHECK_DEBUG_TOKEN =
+// Debug Settings chrome (benchmark + fact-check test). YES in debug by default;
+// set NO for release-looking screen recordings. Ignored in Release builds.
+SHOW_DEBUG_SETTINGS = YES

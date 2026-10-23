@@ -78,6 +78,15 @@ val appCheckDebugToken: String =
             ?: "").trim(),
     )
 
+// Debug Settings sheet chrome (benchmark / debug tests). Default on; set
+// robin.showDebugSettings=false in local.properties for release-looking screen recordings.
+val showDebugSettings: Boolean =
+    (localProperties.getProperty("robin.showDebugSettings")
+        ?: System.getenv("ROBIN_SHOW_DEBUG_SETTINGS")
+        ?: "true")
+        .trim()
+        .equals("true", ignoreCase = true)
+
 android {
     namespace = "org.evergreenlabs.robin"
     compileSdk = 36
@@ -92,6 +101,8 @@ android {
         buildConfigField("String", "APTABASE_APP_KEY", "\"$aptabaseAppKey\"")
         buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
         buildConfigField("String", "APP_CHECK_DEBUG_TOKEN", "\"$appCheckDebugToken\"")
+        // Release buildTypes override this to false below.
+        buildConfigField("boolean", "SHOW_DEBUG_SETTINGS", "$showDebugSettings")
     }
 
     signingConfigs {
@@ -126,6 +137,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Never ship Settings debug chrome in release, even if local.properties enables it.
+            buildConfigField("boolean", "SHOW_DEBUG_SETTINGS", "false")
         }
     }
 

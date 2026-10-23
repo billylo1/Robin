@@ -42,4 +42,19 @@ enum AppConfig {
     static var versionCode: Int {
         Int(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1") ?? 1
     }
+
+    /// When true, Settings shows debug-only chrome (benchmark + fact-check test).
+    /// Debug default on; set `SHOW_DEBUG_SETTINGS = NO` in Config.xcconfig for
+    /// release-looking screen recordings. Always false in Release builds.
+    static var showDebugSettings: Bool {
+        #if DEBUG
+        let raw = (Bundle.main.object(forInfoDictionaryKey: "SHOW_DEBUG_SETTINGS") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() ?? ""
+        if raw.isEmpty || raw.contains("$(") { return true }
+        return raw == "YES" || raw == "TRUE" || raw == "1"
+        #else
+        return false
+        #endif
+    }
 }

@@ -30,6 +30,8 @@
 	<false/>
 	<key>SENTRY_DSN</key>
 	<string>$(SENTRY_DSN)</string>
+	<key>SHOW_DEBUG_SETTINGS</key>
+	<string>$(SHOW_DEBUG_SETTINGS)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -16,12 +16,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import org.json.JSONObject
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.PixelCopy
 import android.view.View
@@ -99,9 +101,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -719,6 +725,65 @@ private fun installWebAuthnSuppression(webView: WebView) {
     }
 }
 
+/**
+ * Compose's AndroidView pointer interop often drops mouse hover after touch
+ * (PointerInteropFilter stays NotDispatching). Synthesize ACTION_HOVER_* into
+ * the WebView so mouseover / CSS :hover reach the page when a mouse or
+ * trackpad is used with the phone/tablet app.
+ */
+private fun dispatchWebViewHover(webView: WebView, action: Int, position: Offset) {
+    val now = SystemClock.uptimeMillis()
+    val event = MotionEvent.obtain(now, now, action, position.x, position.y, 0)
+    event.source = InputDevice.SOURCE_MOUSE
+    try {
+        webView.dispatchGenericMotionEvent(event)
+    } finally {
+        event.recycle()
+    }
+}
+
+/** Forward Compose hover enter/move/exit into [webView] without consuming touch. */
+private fun Modifier.webViewMouseHover(webView: WebView?): Modifier =
+    pointerInput(webView) {
+        if (webView == null) return@pointerInput
+        awaitPointerEventScope {
+            var hovering = false
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                // Buttons down ⇒ click/drag; let AndroidView touch interop own that stream.
+                val anyPressed = event.changes.any { it.pressed }
+                if (anyPressed) {
+                    if (hovering) {
+                        val p = event.changes.firstOrNull()?.position ?: Offset.Zero
+                        dispatchWebViewHover(webView, MotionEvent.ACTION_HOVER_EXIT, p)
+                        hovering = false
+                    }
+                    continue
+                }
+                when (event.type) {
+                    PointerEventType.Enter, PointerEventType.Move -> {
+                        val p = event.changes.firstOrNull()?.position ?: continue
+                        val action =
+                            if (hovering) MotionEvent.ACTION_HOVER_MOVE
+                            else MotionEvent.ACTION_HOVER_ENTER
+                        dispatchWebViewHover(webView, action, p)
+                        hovering = true
+                        // Consume so AndroidView's broken hover path does not double-fire.
+                        event.changes.forEach { it.consume() }
+                    }
+                    PointerEventType.Exit -> {
+                        if (!hovering) continue
+                        val p = event.changes.firstOrNull()?.position ?: Offset.Zero
+                        dispatchWebViewHover(webView, MotionEvent.ACTION_HOVER_EXIT, p)
+                        hovering = false
+                        event.changes.forEach { it.consume() }
+                    }
+                    else -> Unit
+                }
+            }
+        }
+    }
+
 @Composable
 private fun FeedBootCover(visible: Boolean) {
     AnimatedVisibility(
@@ -1304,7 +1369,8 @@ fun XWebFeedScreen(
             AndroidView(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clipToBounds(),
+                    .clipToBounds()
+                    .webViewMouseHover(webViewRef),
                 factory = { ctx ->
                 WebView(ctx).apply {
                     // Prevent black surface flash during cold start before first visual paint.
@@ -1338,6 +1404,14 @@ fun XWebFeedScreen(
                     addJavascriptInterface(InteractBridge { noteUserInteraction() }, "RobinInteract")
                     setOnTouchListener { _, event ->
                         if (event.actionMasked == MotionEvent.ACTION_DOWN) noteUserInteraction()
+                        false
+                    }
+                    setOnHoverListener { _, event ->
+                        if (event.actionMasked == MotionEvent.ACTION_HOVER_MOVE ||
+                            event.actionMasked == MotionEvent.ACTION_HOVER_ENTER
+                        ) {
+                            noteUserInteraction()
+                        }
                         false
                     }
                     addJavascriptInterface(

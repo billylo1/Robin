@@ -1986,6 +1986,17 @@
     return el;
   }
 
+  function firstVisibleFeedArticle(list) {
+    if (!list) return null;
+    for (var i = 0; i < list.length; i++) {
+      var art = list[i];
+      if (isArticleHidden(art)) continue;
+      if (art.offsetHeight < 1) continue;
+      return art;
+    }
+    return null;
+  }
+
   function updateCaughtUpMarker() {
     if (!isHomePath() || !isFollowingFeedActive()) {
       removeCaughtUpMarker();
@@ -2051,14 +2062,9 @@
         if (isPostOlderOrEqual(curId, curTime, targetId, targetTime)) {
           var isBoundary = false;
           if (j === 0) {
-            // First post in the timeline: only a valid boundary if user is at the top of the feed
-            var scrollY =
-              window.pageYOffset ||
-              (document.documentElement && document.documentElement.scrollTop) ||
-              0;
-            if (scrollY < 150) {
-              isBoundary = true;
-            }
+            // Nothing newer than last visit. The banner belongs between new
+            // posts and old ones, not above the first post.
+            isBoundary = false;
           } else {
             // Verify that a previous visible post was newer than targetId
             for (var k = j - 1; k >= 0; k--) {
@@ -2085,6 +2091,13 @@
     // If target post is not currently mounted (user is scrolled above or below it),
     // remove any markers so stale/recycled cells don't display a rogue marker.
     if (!targetArticle) {
+      removeCaughtUpMarker();
+      return;
+    }
+
+    // Already caught up on open: the last-seen post is still the first one.
+    // Do not show the banner at the top of the feed.
+    if (feedScrollNearTop() && targetArticle === firstVisibleFeedArticle(articles)) {
       removeCaughtUpMarker();
       return;
     }

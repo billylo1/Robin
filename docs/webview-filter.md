@@ -28,7 +28,7 @@ Host sets `window.__ROBIN_SETTINGS__` before `filter-core.js` runs. CSS id: `rob
 | Boot cover | Native overlay + `RobinBoot.ready()` | Native overlay + `mtBoot` script message |
 | Benchmark | `BenchmarkStore` (SharedPreferences) + ADB broadcast | `RobinBenchmarkStore` (UserDefaults) + ScriptMessageHandler |
 
-X may still try **desktop** chrome on wide WebViews. iOS injects a force-mobile script (mobile UA / touch / pointer; blocks ≥1000px desktop breakpoints). **Phones/iPads** lay out to the real WebView width (landscape / tablet widen up to ~840px). **Mac Designed-for-iPhone/iPad** freezes `innerWidth` / viewport at phone size — a wide Mac WebView otherwise mounts desktop/hybrid DOM while Robin hides those rails, which blanks the feed. `hidePageHeader` hides mobile `TopNavBar` / desktop left/right rails and expands `primaryColumn` (configurable in Settings under Filter as "Show Feed Tab", default off). Home tab forcing only clicks label-verified For You / Following controls.
+X may still try **desktop** chrome on wide WebViews. iOS injects a force-mobile script (mobile UA; blocks ≥1000px desktop breakpoints). Pointer / hover media queries are **not** spoofed — mice and trackpads on phones, iPads, and Mac must report real `(hover: hover)` / `(pointer: fine)` so mouseover and CSS `:hover` work. **Phones/iPads** lay out to the real WebView width (landscape / tablet widen up to ~840px). **Mac Designed-for-iPhone/iPad** freezes `innerWidth` / viewport at phone size — a wide Mac WebView otherwise mounts desktop/hybrid DOM while Robin hides those rails, which blanks the feed. On Android, Compose’s `AndroidView` interop can drop mouse hover; the feed screen synthesizes `ACTION_HOVER_*` into the WebView from Compose pointer events. `hidePageHeader` hides mobile `TopNavBar` / desktop left/right rails and expands `primaryColumn` (configurable in Settings under Filter as "Show Feed Tab", default off). Home tab forcing only clicks label-verified For You / Following controls.
 
 ### Boot gate (initial launch)
 
@@ -64,7 +64,7 @@ Opening a post snapshots the feed scroll offset, and the tapped row’s distance
 
 ### Caught-up marker (Instagram-style)
 
-When browsing the Following timeline, filter-core tracks the most recent (topmost) post viewed during each session. On subsequent visits (after an app restart, feed refresh, or >15m idle backgrounding), an in-feed marker is placed right above that post:
+When browsing the Following timeline, filter-core tracks the most recent (topmost) post viewed during each session. On subsequent visits (after an app restart, feed refresh, or >15m idle backgrounding), an in-feed marker is placed right above that post, but only when newer posts sit above it. If the user opens the feed already caught up, the banner is not shown at the top:
 - Checkmark icon with copy: **You're all caught up** / *You've seen all new posts from last time*.
 - Clearly demarcates newly posted tweets from tweets already viewed in the previous visit.
 - Seamlessly attached to the target post and virtualizes with the feed.

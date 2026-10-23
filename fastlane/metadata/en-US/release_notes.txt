@@ -1,1 +1,1 @@
-Fix feed reload rendering glitch and performance improvements.
+Mouse and trackpad hover now works in the feed. The caught-up banner stays off the top when you are already up to date.

@@ -24,7 +24,7 @@ sdk.dir=/Users/YOU/Library/Android/sdk
 # aptabase.host=https://YOUR_APTABASE_HOST
 ```
 
-`sentry.dsn` (or env `SENTRY_DSN`) becomes `BuildConfig.SENTRY_DSN`. `aptabase.appKey` / `aptabase.host` (or `APTABASE_APP_KEY` / `APTABASE_HOST`) become BuildConfig fields; empty / placeholder ⇒ Aptabase stays fully disabled. Do not commit `local.properties`.
+`sentry.dsn` (or env `SENTRY_DSN`) becomes `BuildConfig.SENTRY_DSN`. `aptabase.appKey` / `aptabase.host` (or `APTABASE_APP_KEY` / `APTABASE_HOST`) become BuildConfig fields; empty / placeholder ⇒ Aptabase stays fully disabled. `robin.showDebugSettings` (default `true` in debug; always off in release) controls Settings debug chrome (benchmark) — set `false` for release-looking screen recordings. Do not commit `local.properties`.
 
 ## Run
 
@@ -103,7 +103,7 @@ Edit `ios/Config.xcconfig` (gitignored). In xcconfig files, `//` starts a commen
 # APTABASE_HOST = https:/$()/YOUR_APTABASE_HOST
 ```
 
-Leave `SENTRY_DSN` / `APTABASE_APP_KEY` blank to disable those services.
+Leave `SENTRY_DSN` / `APTABASE_APP_KEY` blank to disable those services. Set `SHOW_DEBUG_SETTINGS = NO` to hide Settings debug chrome (benchmark + fact-check test) when recording release-looking videos from a Debug build.
 
 Open [`ios/Robin.xcodeproj`](../ios/Robin.xcodeproj), select your team, then Run.
 
