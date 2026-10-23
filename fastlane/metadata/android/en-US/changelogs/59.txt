@@ -1,0 +1,1 @@
+Feed tabs no longer include the profile photo, X logo, or Subscribe button.

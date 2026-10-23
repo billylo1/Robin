@@ -13,7 +13,7 @@
  *   hideWhoToFollow: boolean (default true)
  *   hideLiveContent: boolean (default true) — hide live / Spaces / broadcast promos on home
  *   hideOpenAppNags: boolean (default true)
- *   hidePageHeader: boolean (default true) — hide X avatar/logo/Subscribe/tabs on home
+ *   hidePageHeader: boolean (default true) — hide home category tabs (avatar/logo/Subscribe always hidden)
  *   (X compose FAB is always hidden; hosts use a native New post control)
  *   hideKeywords: string[] (default []) — whole-word / phrase hides (cat ≠ category)
  *   fontScale: number (default 1) — page zoom for text size
@@ -975,9 +975,10 @@
     root.classList.toggle("mt-hide-page-header", !!settings.hidePageHeader);
     root.classList.add("mt-hide-compose");
     root.classList.toggle("mt-hide-live", !!settings.hideLiveContent);
+    // Show Feed Tab: restore category tabs only. TopNavBar / banner stay hidden.
     if (!settings.hidePageHeader) {
       var headerHides = document.querySelectorAll(
-        '[data-testid="TopNavBar"][data-mt-robin-hide], header[role="banner"][data-mt-robin-hide], [data-testid="ScrollSnap-List"][data-mt-robin-hide], [role="tablist"][data-mt-robin-hide]'
+        '[data-testid="ScrollSnap-List"][data-mt-robin-hide], [role="tablist"][data-mt-robin-hide]'
       );
       for (var hi = 0; hi < headerHides.length; hi++) {
         var hEl = headerHides[hi];
@@ -993,7 +994,6 @@
     // Keep TopNavBar visible until X is confirmed loading HomeLatestTimeline.
     var deferChrome =
       home &&
-      !!settings.hidePageHeader &&
       !!settings.forceFollowing &&
       !!settings.preferLatest &&
       !window.__ROBIN_LATEST_OK__;
@@ -1066,6 +1066,110 @@
   window.__ROBIN_OPEN_COMPOSE__ = openComposeModal;
 
   var chromePassHref = "";
+  var TOP_CHROME_TABLIST =
+    '[data-testid="ScrollSnap-List"], [data-testid="ScrollSnap-SwipeableList"], [role="tablist"]';
+
+  function rootContainsTablist(root) {
+    return !!(root && root.querySelector && root.querySelector(TOP_CHROME_TABLIST));
+  }
+
+  function unhideRobin(el) {
+    if (!el || el.getAttribute("data-mt-robin-hide") !== "1") return;
+    el.style.removeProperty("display");
+    el.removeAttribute("data-mt-robin-hide");
+  }
+
+  /**
+   * Hide avatar / logo / Subscribe. The tab strip mounts inside this node
+   * after first paint — never display:none the whole node once it does.
+   * Peel off sibling branches instead so the strip stays.
+   */
+  function hideTopChromeRoot(root) {
+    if (!root || (root.querySelector && root.querySelector('article[data-testid="tweet"]'))) {
+      return;
+    }
+    var tablist = root.querySelector(TOP_CHROME_TABLIST);
+    if (!tablist) {
+      markRobinHide(root);
+      return;
+    }
+    unhideRobin(root);
+    var node = tablist;
+    while (node && node !== root) {
+      var parent = node.parentElement;
+      if (!parent) break;
+      var sibs = parent.children;
+      for (var i = 0; i < sibs.length; i++) {
+        var sib = sibs[i];
+        if (sib === node) continue;
+        if (sib.contains && sib.contains(tablist)) continue;
+        if (sib.querySelector && sib.querySelector('article[data-testid="tweet"]')) continue;
+        markRobinHide(sib);
+      }
+      node = parent;
+    }
+  }
+
+  function topChromeSettled() {
+    var roots = document.querySelectorAll(
+      '[data-testid="TopNavBar"], header[role="banner"]'
+    );
+    if (!roots.length) return true;
+    for (var i = 0; i < roots.length; i++) {
+      var root = roots[i];
+      if (root.querySelector && root.querySelector('article[data-testid="tweet"]')) continue;
+      if (rootContainsTablist(root)) {
+        if (root.getAttribute("data-mt-robin-hide") === "1") return false;
+        var tablist = root.querySelector(TOP_CHROME_TABLIST);
+        var node = tablist;
+        while (node && node !== root) {
+          var parent = node.parentElement;
+          if (!parent) break;
+          var sibs = parent.children;
+          for (var s = 0; s < sibs.length; s++) {
+            var sib = sibs[s];
+            if (sib === node) continue;
+            if (sib.getAttribute("data-mt-robin-hide") === "1") continue;
+            if (sib.contains && sib.contains(tablist)) continue;
+            var r = sib.getBoundingClientRect();
+            if (r.height > 8 && r.width > 8) return false;
+          }
+          node = parent;
+        }
+      } else if (root.getAttribute("data-mt-robin-hide") !== "1" && root.offsetHeight > 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * After the avatar row is removed, X's sticky tab strip can sit out of flow
+   * and cover the first post. Pad the timeline once so posts start below it.
+   */
+  function offsetTimelineBelowTabs() {
+    var tabs = document.querySelector(TOP_CHROME_TABLIST);
+    var tweet = document.querySelector('article[data-testid="tweet"]');
+    if (!tabs || !tweet || tabs.contains(tweet)) return;
+    var tr = tabs.getBoundingClientRect();
+    var wr = tweet.getBoundingClientRect();
+    if (tr.height < 8 || wr.top < -2 || wr.top >= tr.bottom - 2) return;
+    var overlap = Math.round(tr.bottom - wr.top);
+    if (overlap < 8 || overlap > 160) return;
+    var node = tweet;
+    var target = null;
+    while (node && node !== document.body) {
+      if (node.contains(tabs)) break;
+      target = node;
+      node = node.parentElement;
+    }
+    if (!target) return;
+    var already = parseInt(target.getAttribute("data-mt-tab-pad") || "0", 10);
+    if (isNaN(already)) already = 0;
+    var next = already + overlap;
+    target.setAttribute("data-mt-tab-pad", String(next));
+    target.style.setProperty("padding-top", next + "px", "important");
+  }
 
   function hidePageHeaderFallback() {
     if (!isHomePath()) return;
@@ -1089,8 +1193,7 @@
       hideInlineHomeComposer(col);
     }
 
-    if (!currentSettings().hidePageHeader) return;
-
+    var hideTabs = !!currentSettings().hidePageHeader;
     var deferFeedChrome =
       !!currentSettings().forceFollowing &&
       !!currentSettings().preferLatest &&
@@ -1100,25 +1203,38 @@
     // mutation. Once chrome is hidden for this URL, a couple of selectors
     // are enough to notice a remount.
     if (!deferFeedChrome && chromePassHref === location.href) {
-      var existing = document.querySelector('[data-testid="TopNavBar"]');
-      var barOk = !existing || existing.getAttribute("data-mt-robin-hide") === "1";
       var composer = document.querySelector(
         '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"]'
       );
       var composerOk =
         !composer ||
         (composer.closest && composer.closest("[data-mt-robin-hide]"));
-      if (barOk && composerOk) return;
+      if (topChromeSettled() && composerOk) {
+        if (!hideTabs) {
+          hideInlineHomeComposer(col);
+          offsetTimelineBelowTabs();
+          return;
+        }
+        var tablistQuick = col && col.querySelector(
+          '[data-testid="ScrollSnap-List"], [data-testid="ScrollSnap-SwipeableList"], [role="tablist"]'
+        );
+        var tabsOk =
+          !tablistQuick || tablistQuick.getAttribute("data-mt-robin-hide") === "1" ||
+          (tablistQuick.closest && tablistQuick.closest("[data-mt-robin-hide]"));
+        if (tabsOk) return;
+      }
     }
 
-    // Mobile TopNavBar + any banner (mobile spacer or desktop left rail)
-    var bar = document.querySelector('[data-testid="TopNavBar"]');
-    if (bar && !deferFeedChrome) {
-      markRobinHide(bar);
-    }
-    var banners = document.querySelectorAll('header[role="banner"]');
-    for (var bi = 0; bi < banners.length; bi++) {
-      markRobinHide(banners[bi]);
+    // Avatar / logo / Subscribe. Skip while Latest still needs that control.
+    // Do not blank a container that holds the category tab strip.
+    if (!deferFeedChrome) {
+      var bar = document.querySelector('[data-testid="TopNavBar"]');
+      if (bar) hideTopChromeRoot(bar);
+      var banners = document.querySelectorAll('header[role="banner"]');
+      for (var bi = 0; bi < banners.length; bi++) {
+        if (banners[bi] === bar) continue;
+        hideTopChromeRoot(banners[bi]);
+      }
     }
 
     if (!col) return;
@@ -1129,58 +1245,79 @@
       setImportant(kids[ci], "width", "100%");
     }
 
-    for (var ti = 0; ti < Math.min(kids.length, 8); ti++) {
-      var block = kids[ti];
-      if (block.getAttribute("data-mt-robin-hide") === "1") continue;
-      var br = block.getBoundingClientRect();
-      if (br.height === 0) continue;
-      if (br.top > 240) break;
-      var bt = boundedText(block, 120);
-      var hasCompose = !!block.querySelector(
-        '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"], [data-testid="toolBar"], [data-testid="tweetButtonInline"]'
-      );
-      var hasFeedSwitch =
-        bt.indexOf("following") !== -1 ||
-        bt.indexOf("for you") !== -1 ||
-        !!block.querySelector(
-          '[role="tablist"], [role="tab"], [data-testid="ScrollSnap-List"]'
+    // Category / Following tabs: only when "Show Feed Tab" is off.
+    if (hideTabs) {
+      for (var ti = 0; ti < Math.min(kids.length, 8); ti++) {
+        var block = kids[ti];
+        if (block.getAttribute("data-mt-robin-hide") === "1") continue;
+        var br = block.getBoundingClientRect();
+        if (br.height === 0) continue;
+        if (br.top > 240) break;
+        var bt = boundedText(block, 120);
+        var hasCompose = !!block.querySelector(
+          '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"], [data-testid="toolBar"], [data-testid="tweetButtonInline"]'
         );
-      if (hasCompose && br.height < 480) {
-        // Don't hide a top block that also owns the timeline.
-        if (!block.querySelector('article[data-testid="tweet"]')) {
-          markRobinHide(block);
-        }
-        continue;
-      }
-      if (hasFeedSwitch && br.height < 100 && !deferFeedChrome) {
-        markRobinHide(block);
-      }
-    }
-
-    if (!deferFeedChrome) {
-      // Walk up from the tablist only. querySelectorAll("div") + getComputedStyle
-      // on the whole column was the multi-second hitch deep in the feed.
-      var tablist = col.querySelector(
-        '[data-testid="ScrollSnap-List"], [data-testid="ScrollSnap-SwipeableList"], [role="tablist"]'
-      );
-      var el = tablist;
-      for (var depth = 0; el && el !== col && depth < 8; depth++) {
-        if (el.getAttribute("data-mt-robin-hide") === "1") {
-          el = el.parentElement;
+        var hasFeedSwitch =
+          bt.indexOf("following") !== -1 ||
+          bt.indexOf("for you") !== -1 ||
+          !!block.querySelector(
+            '[role="tablist"], [role="tab"], [data-testid="ScrollSnap-List"]'
+          );
+        if (hasCompose && br.height < 480) {
+          // Don't hide a top block that also owns the timeline.
+          if (!block.querySelector('article[data-testid="tweet"]')) {
+            markRobinHide(block);
+          }
           continue;
         }
-        var st = window.getComputedStyle(el);
-        if (
-          (st.position === "sticky" || st.position === "fixed") &&
-          !el.querySelector('article[data-testid="tweet"]')
-        ) {
-          markRobinHide(el);
+        if (hasFeedSwitch && br.height < 100 && !deferFeedChrome) {
+          markRobinHide(block);
         }
-        el = el.parentElement;
+      }
+
+      if (!deferFeedChrome) {
+        // Walk up from the tablist only. querySelectorAll("div") + getComputedStyle
+        // on the whole column was the multi-second hitch deep in the feed.
+        var tablist = col.querySelector(
+          '[data-testid="ScrollSnap-List"], [data-testid="ScrollSnap-SwipeableList"], [role="tablist"]'
+        );
+        var el = tablist;
+        for (var depth = 0; el && el !== col && depth < 8; depth++) {
+          if (el.getAttribute("data-mt-robin-hide") === "1") {
+            el = el.parentElement;
+            continue;
+          }
+          var st = window.getComputedStyle(el);
+          if (
+            (st.position === "sticky" || st.position === "fixed") &&
+            !el.querySelector('article[data-testid="tweet"]')
+          ) {
+            markRobinHide(el);
+          }
+          el = el.parentElement;
+        }
+      }
+    } else {
+      // Still hide the inline composer block when tabs are shown.
+      for (var ci2 = 0; ci2 < Math.min(kids.length, 8); ci2++) {
+        var block2 = kids[ci2];
+        if (block2.getAttribute("data-mt-robin-hide") === "1") continue;
+        var br2 = block2.getBoundingClientRect();
+        if (br2.height === 0) continue;
+        if (br2.top > 240) break;
+        var hasCompose2 = !!block2.querySelector(
+          '[data-testid="tweetTextarea_0"], [data-testid^="tweetTextarea_"], [data-testid="toolBar"], [data-testid="tweetButtonInline"]'
+        );
+        if (hasCompose2 && br2.height < 480) {
+          if (!block2.querySelector('article[data-testid="tweet"]')) {
+            markRobinHide(block2);
+          }
+        }
       }
     }
 
     hideInlineHomeComposer(col);
+    if (!hideTabs && !deferFeedChrome) offsetTimelineBelowTabs();
     if (!deferFeedChrome) chromePassHref = location.href;
   }
 
@@ -1355,9 +1492,9 @@
    * Also used by autoClickNewPostsPill — piggybacks on X’s own “Show N posts”
    * affordance when the site has already detected newer timeline entries.
    *
-   * hidePageHeader often wraps that pill in TopNavBar / sticky chrome we
-   * display:none, so discovery must ignore visibility and clickNewPostsControl
-   * briefly clears robin hides for the click.
+   * TopNavBar / sticky chrome often wraps that pill in display:none, so
+   * discovery must ignore visibility and clickNewPostsControl briefly clears
+   * robin hides + data-mt-reveal-feed-chrome for the click.
    */
   function newPostsLabelMatch(label) {
     if (!label || label.length > 64) return false;
@@ -1430,17 +1567,20 @@
   function clickNewPostsControl(el) {
     if (!el) return false;
     var restored = clearRobinHideChain(el);
-    // CSS class hide (TopNavBar) may still apply — briefly lift page-header hide.
+    // CSS always hides TopNavBar on home — briefly reveal for the click.
     var root = document.documentElement;
     var hadClass = root && root.classList.contains("mt-hide-page-header");
     if (hadClass) root.classList.remove("mt-hide-page-header");
+    if (root) root.setAttribute("data-mt-reveal-feed-chrome", "1");
     try {
       el.click();
     } catch (e) {
+      if (root) root.removeAttribute("data-mt-reveal-feed-chrome");
       if (hadClass) root.classList.add("mt-hide-page-header");
       restoreRobinHideChain(restored);
       return false;
     }
+    if (root) root.removeAttribute("data-mt-reveal-feed-chrome");
     if (hadClass) root.classList.add("mt-hide-page-header");
     restoreRobinHideChain(restored);
     // Next tick re-applies chrome hides cleanly.
@@ -2450,6 +2590,7 @@
   window.__ROBIN_ON_SETTINGS__ = function () {
     keywordSource = null;
     needsFullPass = true;
+    chromePassHref = "";
     schedule();
   };
 
@@ -2707,11 +2848,15 @@
     ) {
       return false;
     }
-    if (!currentSettings().hidePageHeader) return true;
     var root = document.documentElement;
     if (root && root.getAttribute("data-mt-defer-feed-chrome") === "1") return true;
     var bar = document.querySelector('[data-testid="TopNavBar"]');
-    if (bar && bar.offsetHeight > 0) return false;
+    if (bar && bar.offsetHeight > 0) {
+      var tabsStay = !currentSettings().hidePageHeader && rootContainsTablist(bar);
+      if (!tabsStay) return false;
+    }
+    // When Show Feed Tab is on, category tabs stay visible — that is fine.
+    if (!currentSettings().hidePageHeader) return true;
     var tablist = document.querySelector(
       "div[data-testid='ScrollSnap-List'][role='tablist']"
     );

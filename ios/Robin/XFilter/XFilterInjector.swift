@@ -77,7 +77,7 @@ enum XFilterInjector {
               root.classList.toggle('mt-hide-page-header', !!cfg.hidePageHeader);
               root.classList.add('mt-hide-compose');
               // Prefer Latest needs TopNavBar; defer CSS hide until filter confirms it.
-              if (home && cfg.hidePageHeader && cfg.forceFollowing && cfg.preferLatest) {
+              if (home && cfg.forceFollowing && cfg.preferLatest) {
                 root.setAttribute('data-mt-defer-feed-chrome', '1');
               }
             }
@@ -238,13 +238,14 @@ enum XFilterInjector {
           root.classList.toggle('mt-hide-page-header', !!cfg.hidePageHeader);
           root.classList.add('mt-hide-compose');
           root.classList.toggle('mt-hide-live', !!cfg.hideLiveContent);
-          if (home && cfg.hidePageHeader && cfg.forceFollowing && cfg.preferLatest && !window.__ROBIN_LATEST_OK__) {
+          if (home && cfg.forceFollowing && cfg.preferLatest && !window.__ROBIN_LATEST_OK__) {
             root.setAttribute('data-mt-defer-feed-chrome', '1');
           } else {
             root.removeAttribute('data-mt-defer-feed-chrome');
           }
+          // Show Feed Tab: restore category tabs only. TopNavBar stays hidden.
           if (!cfg.hidePageHeader) {
-            var hh = document.querySelectorAll('[data-testid="TopNavBar"][data-mt-robin-hide], header[role="banner"][data-mt-robin-hide]');
+            var hh = document.querySelectorAll('[data-testid="ScrollSnap-List"][data-mt-robin-hide], [role="tablist"][data-mt-robin-hide]');
             for (var i = 0; i < hh.length; i++) {
               hh[i].style.removeProperty('display');
               hh[i].removeAttribute('data-mt-robin-hide');

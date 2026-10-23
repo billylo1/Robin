@@ -1,3 +1,4 @@
+Feed tabs no longer include the profile photo, X logo, or Subscribe button.
 Bug fixes and performance improvements.
 Mouse and trackpad hover now works in the feed. The caught-up banner stays off the top when you are already up to date.
 Fix feed reload rendering glitch and performance improvements.

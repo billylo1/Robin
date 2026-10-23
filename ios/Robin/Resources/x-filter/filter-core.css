@@ -21,18 +21,27 @@ a[href*="quick_promote_web"] {
 }
 
 /*
- * Home + hide page header: strip X chrome so the feed fills the WebView.
+ * Home: hide X's avatar / logo / Subscribe. The category tab strip often
+ * mounts inside TopNavBar / the banner after first paint, so those containers
+ * are hidden only when they do not contain the tabs. "Show Feed Tab"
+ * (no mt-hide-page-header) leaves the strip visible. JS peels the avatar row
+ * off when the strip shares that container.
+ *
  * Mac Designed-for-iPad often gets desktop DOM; left rail alone can leave a
  * blank primary column at phone widths — hide rail and force the column visible.
  *
  * While preferLatest still needs the Popular/Latest control, JS sets
- * data-mt-defer-feed-chrome so TopNavBar / banner stay visible.
+ * data-mt-defer-feed-chrome so this chrome stays visible.
+ * data-mt-reveal-feed-chrome briefly lifts the hide for “Show N posts” clicks.
  *
  * On landscape / tablet, let the timeline use the real viewport width (up to
  * a readable cap) instead of X's phone-narrow column.
  */
-html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) [data-testid="TopNavBar"],
-html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) header[role="banner"],
+html[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]):not([data-mt-reveal-feed-chrome="1"]) [data-testid="TopNavBar"]:not(:has([data-testid="ScrollSnap-List"])):not(:has([role="tablist"])),
+html[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]):not([data-mt-reveal-feed-chrome="1"]) header[role="banner"]:not(:has([data-testid="ScrollSnap-List"])):not(:has([role="tablist"])) {
+  display: none !important;
+}
+
 /* Home tabs sit in the timeline column, not TopNavBar. Leaving them in flow
    until the deferred JS hide shifts the feed by about that row. */
 html.mt-hide-page-header[data-mt-home="1"]:not([data-mt-defer-feed-chrome="1"]) div[data-testid="ScrollSnap-List"][role="tablist"] {
