@@ -52,6 +52,8 @@ Flow: warm hard-reload of `https://x.com/home` with cache bypass (`reloadIgnorin
 
 While near the top of Following, filter-core also **auto-clicks** X’s own “Show N posts” pill as soon as it appears (MutationObserver tick, 2.5s throttle) — same affordance as desktop/mobile web, without waiting for a native refresh. `hidePageHeader` often nests that control inside TopNavBar / sticky chrome that Robin hides; discovery ignores visibility and briefly clears those hides for the click, then restores chrome.
 
+On **For You**, X floats a separate facepile pill whose label is a short name list ending in “posted” or “has posted” (for example “Alex, Blair, and Casey posted”). That pill is hidden and is not clicked. Switching back to Following restores it. The Following “Show N posts” control is unchanged.
+
 Title tap while scrolled down still only scrolls to top. The toolbar Refresh button always reloads (warm snapshot crossfade after first reveal).
 
 **Mac (iOS app on Mac):** keep polling while `.inactive` as well (window often stays visible without being key). Stop only on `.background` / disappear.
