@@ -16,6 +16,7 @@
  *   hidePageHeader: boolean (default true) — hide home category tabs (avatar/logo/Subscribe always hidden)
  *   (X compose FAB is always hidden; hosts use a native New post control)
  *   hideKeywords: string[] (default []) — whole-word / phrase hides (cat ≠ category)
+ *   allowedLanguages: string[] (default []) — post languages to show; hides others (e.g. ['en', 'zh'])
  *   fontScale: number (default 1) — page zoom for text size
  * iOS host sets window.__ROBIN_TEXT_SIZE_ADJUST__: WKWebView text ignores html
  * zoom, so scale is applied via -webkit-text-size-adjust instead.
@@ -149,6 +150,7 @@
     hideOpenAppNags: true,
     hidePageHeader: true,
     hideKeywords: [],
+    allowedLanguages: [],
     fontScale: 1,
   };
 
@@ -885,17 +887,43 @@
     return m ? m[1] : "";
   }
 
+  function updateCellHideDisplay(el) {
+    if (!el || !el.style) return;
+    var hide =
+      el.getAttribute("data-mt-robin-hide") === "1" ||
+      el.getAttribute("data-mt-keyword-hide") === "1" ||
+      el.getAttribute("data-mt-language-hide") === "1";
+    if (hide) {
+      el.style.setProperty("display", "none", "important");
+    } else {
+      el.style.removeProperty("display");
+    }
+  }
+
   function unmarkKeywordHide(el) {
-    if (!el || el.getAttribute("data-mt-keyword-hide") !== "1") return;
+    if (!el || !el.removeAttribute) return;
+    if (el.getAttribute("data-mt-keyword-hide") !== "1") return;
     el.removeAttribute("data-mt-keyword-hide");
-    if (el.getAttribute("data-mt-robin-hide") === "1") return;
-    el.style.removeProperty("display");
+    updateCellHideDisplay(el);
   }
 
   function markKeywordHide(el) {
     if (!el) return;
     el.setAttribute("data-mt-keyword-hide", "1");
-    el.style.setProperty("display", "none", "important");
+    updateCellHideDisplay(el);
+  }
+
+  function unmarkLanguageHide(el) {
+    if (!el || !el.removeAttribute) return;
+    if (el.getAttribute("data-mt-language-hide") !== "1") return;
+    el.removeAttribute("data-mt-language-hide");
+    updateCellHideDisplay(el);
+  }
+
+  function markLanguageHide(el) {
+    if (!el) return;
+    el.setAttribute("data-mt-language-hide", "1");
+    updateCellHideDisplay(el);
   }
 
   function cellTweetBlob(cell) {
@@ -959,6 +987,117 @@
       var text = cellTweetBlob(cell);
       if (text && textHitsKeyword(text, patterns)) markKeywordHide(cell);
       else unmarkKeywordHide(cell);
+    }
+  }
+
+  var langSource = null;
+  var allowedLanguageSet = null;
+
+  function allowedLanguageSetFor(settings) {
+    var raw = settings && settings.allowedLanguages;
+    if (raw === langSource && langSource !== null) return allowedLanguageSet;
+    langSource = raw || null;
+    if (!raw || !raw.length) {
+      allowedLanguageSet = null;
+      return null;
+    }
+    var set = {};
+    for (var i = 0; i < raw.length; i++) {
+      if (typeof raw[i] !== "string") continue;
+      var code = raw[i].trim().toLowerCase().split("-")[0];
+      if (code) set[code] = true;
+    }
+    allowedLanguageSet = Object.keys(set).length ? set : null;
+    return allowedLanguageSet;
+  }
+
+  var RE_KANA = /[\u3040-\u309f\u30a0-\u30ff]/;
+  var RE_CJK = /[\u4e00-\u9fff]/;
+  var RE_HANGUL = /[\uac00-\ud7af\u1100-\u11ff]/;
+  var RE_ARABIC = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff]/;
+  var RE_CYRILLIC = /[\u0400-\u04ff]/;
+  var RE_DEVANAGARI = /[\u0900-\u097f]/;
+  var RE_THAI = /[\u0e00-\u0e7f]/;
+  var RE_HEBREW = /[\u0590-\u05ff]/;
+  var RE_GREEK = /[\u0370-\u03ff]/;
+
+  function detectLanguageFromText(text) {
+    if (!text) return null;
+    if (RE_KANA.test(text)) return "ja";
+    if (RE_HANGUL.test(text)) return "ko";
+    if (RE_CJK.test(text)) return "zh";
+    if (RE_ARABIC.test(text)) return "ar";
+    if (RE_CYRILLIC.test(text)) return "ru";
+    if (RE_DEVANAGARI.test(text)) return "hi";
+    if (RE_THAI.test(text)) return "th";
+    if (RE_HEBREW.test(text)) return "he";
+    if (RE_GREEK.test(text)) return "el";
+    return null;
+  }
+
+  function nodeDetectedLanguage(node) {
+    if (!node) return null;
+    var langAttr = (node.getAttribute("lang") || "").trim().toLowerCase();
+    var baseLang = langAttr ? langAttr.split("-")[0] : "";
+    if (baseLang && baseLang !== "und" && baseLang !== "zxx") {
+      return baseLang;
+    }
+    var text = node.textContent || "";
+    return detectLanguageFromText(text);
+  }
+
+  function cellTweetLanguages(cell) {
+    if (!cell || !cell.querySelectorAll) return [];
+    var nodes = cell.querySelectorAll('[data-testid="tweetText"]');
+    if (!nodes.length) return [];
+    var langs = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var l = nodeDetectedLanguage(nodes[i]);
+      if (l) langs.push(l);
+    }
+    return langs;
+  }
+
+  function hideLanguagePosts(root) {
+    var allowedSet = allowedLanguageSetFor(currentSettings());
+    var scope = root && root.querySelectorAll ? root : document;
+    var cells;
+    if (scope.getAttribute && scope.getAttribute("data-testid") === "cellInnerDiv") {
+      cells = [scope];
+    } else {
+      cells = scope.querySelectorAll('[data-testid="cellInnerDiv"]');
+    }
+    if (!allowedSet) {
+      if (scope.getAttribute && scope.getAttribute("data-mt-language-hide") === "1") {
+        unmarkLanguageHide(scope);
+      }
+      var hidden = scope.querySelectorAll
+        ? scope.querySelectorAll("[data-mt-language-hide]")
+        : [];
+      for (var h = 0; h < hidden.length; h++) unmarkLanguageHide(hidden[h]);
+      return;
+    }
+    for (var i = 0; i < cells.length; i++) {
+      var cell = cells[i];
+      if (cellIsFocalStatus(cell)) {
+        unmarkLanguageHide(cell);
+        continue;
+      }
+      var langs = cellTweetLanguages(cell);
+      if (!langs.length) {
+        // No recognizable language or media-only; do not hide
+        unmarkLanguageHide(cell);
+        continue;
+      }
+      var hasAllowed = false;
+      for (var l = 0; l < langs.length; l++) {
+        if (allowedSet[langs[l]]) {
+          hasAllowed = true;
+          break;
+        }
+      }
+      if (hasAllowed) unmarkLanguageHide(cell);
+      else markLanguageHide(cell);
     }
   }
 
@@ -2369,6 +2508,7 @@
       hideWhoToFollowBlocks(document);
       hideLiveContentBlocks(document);
       hideKeywordPosts(document);
+      hideLanguagePosts(document);
       hidePageHeaderFallback();
       hideComposeButtonFallback();
       var allCells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
@@ -2392,6 +2532,7 @@
         hideWhoToFollowBlocks(n);
         hideLiveContentBlocks(n);
         hideKeywordPosts(n);
+        hideLanguagePosts(n);
       }
       if (work.length > limit) {
         for (var k = limit; k < work.length; k++) rememberPending(work[k]);
@@ -2589,6 +2730,7 @@
 
   window.__ROBIN_ON_SETTINGS__ = function () {
     keywordSource = null;
+    langSource = null;
     needsFullPass = true;
     chromePassHref = "";
     schedule();

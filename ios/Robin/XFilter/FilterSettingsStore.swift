@@ -14,6 +14,7 @@ final class FilterSettingsStore {
         static let hideOpenAppNags = "xfilter:hideOpenAppNags"
         static let hidePageHeader = "xfilter:hidePageHeader"
         static let hideKeywords = "xfilter:hideKeywords"
+        static let allowedLanguages = "xfilter:allowedLanguages"
     }
 
     private let defaults: UserDefaults
@@ -43,6 +44,7 @@ final class FilterSettingsStore {
         defaults.set(s.hideOpenAppNags, forKey: Keys.hideOpenAppNags)
         defaults.set(s.hidePageHeader, forKey: Keys.hidePageHeader)
         defaults.set(s.hideKeywords, forKey: Keys.hideKeywords)
+        defaults.set(s.allowedLanguages, forKey: Keys.allowedLanguages)
         defaults.removeObject(forKey: "xfilter:hideComposeButton")
     }
 
@@ -63,6 +65,9 @@ final class FilterSettingsStore {
             hidePageHeader: bool(Keys.hidePageHeader, fallback: d.hidePageHeader),
             hideKeywords: FilterSettings.normalizedKeywords(
                 defaults.stringArray(forKey: Keys.hideKeywords) ?? []
+            ),
+            allowedLanguages: FilterSettings.normalizedLanguages(
+                defaults.stringArray(forKey: Keys.allowedLanguages) ?? []
             )
         )
     }

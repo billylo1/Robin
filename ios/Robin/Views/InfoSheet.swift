@@ -116,6 +116,16 @@ struct InfoSheet: View {
                         "Show live content",
                         isOn: invertedBinding(\.hideLiveContent)
                     )
+                    NavigationLink {
+                        LanguageFilterView()
+                    } label: {
+                        HStack {
+                            Text("Languages you read")
+                            Spacer()
+                            Text(languageSummary)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Section("Hide posts containing these keywords") {
@@ -311,5 +321,151 @@ struct InfoSheet: View {
                 filterStore.update { $0[keyPath: keyPath] = !newValue }
             }
         )
+    }
+
+    private var languageSummary: String {
+        let langs = filterStore.settings.allowedLanguages
+        if langs.isEmpty {
+            return "All"
+        }
+        let names: [String] = langs.map { code in
+            switch code {
+            case "en": "English"
+            case "zh": "Chinese"
+            case "ja": "Japanese"
+            case "es": "Spanish"
+            case "ko": "Korean"
+            case "fr": "French"
+            case "de": "German"
+            case "pt": "Portuguese"
+            case "ar": "Arabic"
+            case "ru": "Russian"
+            default: code.uppercased()
+            }
+        }
+        if names.count <= 2 {
+            return names.joined(separator: ", ")
+        }
+        return "\(names.prefix(2).joined(separator: ", ")) +\(names.count - 2)"
+    }
+}
+
+struct LanguageFilterView: View {
+    @Environment(FilterSettingsStore.self) private var filterStore
+    @State private var customCodeDraft = ""
+
+    struct LanguageOption: Identifiable {
+        let code: String
+        let name: String
+        var id: String { code }
+    }
+
+    private static let supportedLanguages: [LanguageOption] = [
+        LanguageOption(code: "en", name: "English"),
+        LanguageOption(code: "zh", name: "Chinese (中文)"),
+        LanguageOption(code: "ja", name: "Japanese (日本語)"),
+        LanguageOption(code: "es", name: "Spanish (Español)"),
+        LanguageOption(code: "ko", name: "Korean (한국어)"),
+        LanguageOption(code: "fr", name: "French (Français)"),
+        LanguageOption(code: "de", name: "German (Deutsch)"),
+        LanguageOption(code: "pt", name: "Portuguese (Português)"),
+        LanguageOption(code: "ar", name: "Arabic (العربية)"),
+        LanguageOption(code: "ru", name: "Russian (Русский)"),
+        LanguageOption(code: "it", name: "Italian (Italiano)"),
+        LanguageOption(code: "hi", name: "Hindi (हिन्दी)"),
+        LanguageOption(code: "id", name: "Indonesian (Bahasa Indonesia)"),
+        LanguageOption(code: "tr", name: "Turkish (Türkçe)"),
+        LanguageOption(code: "nl", name: "Dutch (Nederlands)"),
+        LanguageOption(code: "pl", name: "Polish (Polski)"),
+        LanguageOption(code: "th", name: "Thai (ไทย)"),
+        LanguageOption(code: "vi", name: "Vietnamese (Tiếng Việt)"),
+        LanguageOption(code: "uk", name: "Ukrainian (Українська)"),
+        LanguageOption(code: "tl", name: "Filipino (Tagalog)")
+    ]
+
+    var body: some View {
+        List {
+            Section {
+                Button {
+                    filterStore.update { $0.allowedLanguages = [] }
+                } label: {
+                    HStack {
+                        Text("All languages (no filtering)")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if filterStore.settings.allowedLanguages.isEmpty {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.tint)
+                        }
+                    }
+                }
+            } footer: {
+                Text("When no languages are selected, posts in all languages are shown.")
+            }
+
+            Section("Languages you read") {
+                ForEach(Self.supportedLanguages) { lang in
+                    let isSelected = filterStore.settings.allowedLanguages.contains(lang.code)
+                    Button {
+                        filterStore.update { settings in
+                            if isSelected {
+                                settings.allowedLanguages.removeAll { $0 == lang.code }
+                            } else {
+                                settings.allowedLanguages.append(lang.code)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text(lang.name)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.tint)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Other language code (ISO 639-1)") {
+                HStack {
+                    TextField("e.g. sv, he, el", text: $customCodeDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Add") {
+                        let trimmed = customCodeDraft.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                        guard !trimmed.isEmpty else { return }
+                        filterStore.update { settings in
+                            if !settings.allowedLanguages.contains(trimmed) {
+                                settings.allowedLanguages.append(trimmed)
+                            }
+                        }
+                        customCodeDraft = ""
+                    }
+                }
+                ForEach(customSelectedLanguages, id: \.self) { code in
+                    HStack {
+                        Text(code)
+                        Spacer()
+                        Button(role: .destructive) {
+                            filterStore.update { settings in
+                                settings.allowedLanguages.removeAll { $0 == code }
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Languages")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var customSelectedLanguages: [String] {
+        let predefined = Set(Self.supportedLanguages.map(\.code))
+        return filterStore.settings.allowedLanguages.filter { !predefined.contains($0) }
     }
 }

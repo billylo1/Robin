@@ -27,6 +27,8 @@ data class FilterSettings(
     val hidePageHeader: Boolean = true,
     /** Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`. */
     val hideKeywords: List<String> = emptyList(),
+    /** Allowed post languages (e.g. ["en", "zh"]). Empty allows all languages. */
+    val allowedLanguages: List<String> = emptyList(),
 ) {
     /** Home feed mode for Settings UI (default: Following by time). */
     val homeFeedMode: HomeFeedMode
@@ -64,6 +66,12 @@ data class FilterSettings(
             append(jsonStringLiteral(phrase))
         }
         append("],")
+        append("\"allowedLanguages\":[")
+        allowedLanguages.forEachIndexed { index, code ->
+            if (index > 0) append(',')
+            append(jsonStringLiteral(code))
+        }
+        append("],")
         append("\"fontScale\":").append(fontScale)
         append('}')
     }
@@ -73,6 +81,17 @@ data class FilterSettings(
         const val KEYWORD_MAX_LENGTH = 80
 
         val Default = FilterSettings()
+
+        fun normalizedLanguages(raw: List<String>): List<String> {
+            val seen = HashSet<String>()
+            val out = ArrayList<String>()
+            for (item in raw) {
+                val code = item.trim().lowercase(Locale.ROOT)
+                if (code.isEmpty() || !seen.add(code)) continue
+                out.add(code)
+            }
+            return out
+        }
 
         /** Trim, collapse whitespace, drop blanks and over-long phrases, dedupe ignoring case. */
         fun normalizedKeywords(raw: List<String>): List<String> {

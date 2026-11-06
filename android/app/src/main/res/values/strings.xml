@@ -46,6 +46,11 @@
     <string name="filter_keyword_hint">Keyword or phrase</string>
     <string name="filter_keyword_add">Add</string>
     <string name="filter_keyword_remove">Remove %1$s</string>
+    <string name="filter_languages">Languages you read</string>
+    <string name="filter_languages_all">All languages (no filtering)</string>
+    <string name="filter_languages_description">Hide posts not written in your selected languages. Leave empty to show all languages.</string>
+    <string name="filter_languages_custom_hint">e.g. sv, he, el</string>
+    <string name="filter_languages_other">Other language code (ISO 639-1)</string>
     <string name="benchmark_title">Performance Benchmark</string>
     <string name="benchmark_initial_load">Initial Load Time</string>
     <string name="benchmark_scroll_completion">Scroll Render Settle</string>

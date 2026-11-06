@@ -129,6 +129,8 @@ fun InfoSheet(
             Spacer(modifier = Modifier.height(16.dp))
             HideKeywordsSection()
             Spacer(modifier = Modifier.height(16.dp))
+            FeedLanguagesSection()
+            Spacer(modifier = Modifier.height(16.dp))
             if (AppConfig.showDebugSettings) {
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(12.dp))
@@ -550,6 +552,181 @@ private fun HideKeywordsSection() {
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+private data class LanguageOption(val code: String, val name: String)
+
+private val SupportedLanguages = listOf(
+    LanguageOption("en", "English"),
+    LanguageOption("zh", "Chinese (中文)"),
+    LanguageOption("ja", "Japanese (日本語)"),
+    LanguageOption("es", "Spanish (Español)"),
+    LanguageOption("ko", "Korean (한국어)"),
+    LanguageOption("fr", "French (Français)"),
+    LanguageOption("de", "German (Deutsch)"),
+    LanguageOption("pt", "Portuguese (Português)"),
+    LanguageOption("ar", "Arabic (العربية)"),
+    LanguageOption("ru", "Russian (Русский)"),
+    LanguageOption("it", "Italian (Italiano)"),
+    LanguageOption("hi", "Hindi (हिन्दी)"),
+    LanguageOption("id", "Indonesian (Bahasa Indonesia)"),
+    LanguageOption("tr", "Turkish (Türkçe)"),
+    LanguageOption("nl", "Dutch (Nederlands)"),
+    LanguageOption("pl", "Polish (Polski)"),
+    LanguageOption("th", "Thai (ไทย)"),
+    LanguageOption("vi", "Vietnamese (Tiếng Việt)"),
+    LanguageOption("uk", "Ukrainian (Українська)"),
+    LanguageOption("tl", "Filipino (Tagalog)"),
+)
+
+@Composable
+private fun FeedLanguagesSection() {
+    val store = AppGraph.filterSettings
+    val settings by store.settings.collectAsStateWithLifecycle(initialValue = FilterSettings.Default)
+    val scope = rememberCoroutineScope()
+    var customCode by remember { mutableStateOf("") }
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Text(
+        text = stringResource(R.string.filter_languages),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = stringResource(R.string.filter_languages_description),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+            FilterSwitchRow(
+                label = stringResource(R.string.filter_languages_all),
+                checked = settings.allowedLanguages.isEmpty(),
+                onCheckedChange = { checked ->
+                    if (checked) {
+                        scope.launch { store.update { it.copy(allowedLanguages = emptyList()) } }
+                    }
+                },
+            )
+            val languagesToShow = if (isExpanded) SupportedLanguages else SupportedLanguages.take(6)
+            languagesToShow.forEach { lang ->
+                val isChecked = settings.allowedLanguages.contains(lang.code)
+                FilterSwitchRow(
+                    label = lang.name,
+                    checked = isChecked,
+                    onCheckedChange = { checked ->
+                        scope.launch {
+                            store.update { current ->
+                                val next = if (checked) {
+                                    (current.allowedLanguages + lang.code).distinct()
+                                } else {
+                                    current.allowedLanguages.filterNot { it == lang.code }
+                                }
+                                current.copy(allowedLanguages = next)
+                            }
+                        }
+                    },
+                )
+            }
+            if (!isExpanded && SupportedLanguages.size > 6) {
+                TextButton(
+                    onClick = { isExpanded = true },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text("Show more languages (${SupportedLanguages.size - 6} more)")
+                }
+            } else if (isExpanded) {
+                TextButton(
+                    onClick = { isExpanded = false },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text("Show less")
+                }
+            }
+            val predefined = remember { SupportedLanguages.map { it.code }.toSet() }
+            val customLanguages = settings.allowedLanguages.filterNot { predefined.contains(it) }
+            if (customLanguages.isNotEmpty()) {
+                customLanguages.forEach { code ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = SettingsRowMinHeight),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = code,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    store.update { cur ->
+                                        cur.copy(allowedLanguages = cur.allowedLanguages.filterNot { it == code })
+                                    }
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.RemoveCircle,
+                                contentDescription = code,
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = SettingsRowMinHeight),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = customCode,
+                    onValueChange = { customCode = it },
+                    placeholder = { Text(stringResource(R.string.filter_languages_custom_hint)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        val trimmed = customCode.trim().lowercase(Locale.ROOT)
+                        if (trimmed.isNotEmpty()) {
+                            scope.launch {
+                                store.update { cur ->
+                                    cur.copy(allowedLanguages = (cur.allowedLanguages + trimmed).distinct())
+                                }
+                            }
+                            customCode = ""
+                        }
+                    }),
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = {
+                        val trimmed = customCode.trim().lowercase(Locale.ROOT)
+                        if (trimmed.isNotEmpty()) {
+                            scope.launch {
+                                store.update { cur ->
+                                    cur.copy(allowedLanguages = (cur.allowedLanguages + trimmed).distinct())
+                                }
+                            }
+                            customCode = ""
+                        }
+                    },
+                    modifier = Modifier.padding(start = 4.dp),
+                ) {
+                    Text(stringResource(R.string.filter_keyword_add))
                 }
             }
         }

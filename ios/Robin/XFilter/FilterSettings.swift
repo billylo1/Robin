@@ -31,11 +31,26 @@ struct FilterSettings: Equatable, Sendable {
     var hidePageHeader: Bool = true
     /// Whole-word or phrase hides. Empty hides nothing. `cat` does not match `category`.
     var hideKeywords: [String] = []
+    /// Allowed post languages (e.g. ["en", "zh"]). Empty allows all languages.
+    var allowedLanguages: [String] = []
 
     static let keywordMaxCount = 40
     static let keywordMaxLength = 80
 
     static let `default` = FilterSettings()
+
+    /// Lowercase, trim, dedupe language codes (e.g. "en", "zh").
+    static func normalizedLanguages(_ raw: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for item in raw {
+            let code = item.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !code.isEmpty, !seen.contains(code) else { continue }
+            seen.insert(code)
+            out.append(code)
+        }
+        return out
+    }
 
     /// Trim, collapse whitespace, drop blanks and over-long phrases, dedupe ignoring case.
     static func normalizedKeywords(_ raw: [String]) -> [String] {
@@ -86,8 +101,9 @@ struct FilterSettings: Equatable, Sendable {
     /// JSON object literal for embedding in injected JavaScript.
     func toJSONObjectLiteral(fontScale: Double = 1) -> String {
         let keywords = hideKeywords.map(Self.jsonStringLiteral).joined(separator: ",")
+        let languages = allowedLanguages.map(Self.jsonStringLiteral).joined(separator: ",")
         return """
-        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideKeywords":[\(keywords)],"fontScale":\(fontScale)}
+        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideKeywords":[\(keywords)],"allowedLanguages":[\(languages)],"fontScale":\(fontScale)}
         """
     }
 

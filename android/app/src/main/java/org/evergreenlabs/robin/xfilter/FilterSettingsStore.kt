@@ -26,6 +26,7 @@ class FilterSettingsStore(private val context: Context) {
         val hideOpenAppNags = booleanPreferencesKey("hideOpenAppNags")
         val hidePageHeader = booleanPreferencesKey("hidePageHeader")
         val hideKeywords = stringPreferencesKey("hideKeywords")
+        val allowedLanguages = stringPreferencesKey("allowedLanguages")
     }
 
     val settings: Flow<FilterSettings> = context.filterSettingsDataStore.data.map { prefs ->
@@ -44,6 +45,7 @@ class FilterSettingsStore(private val context: Context) {
             prefs[Keys.hideOpenAppNags] = next.hideOpenAppNags
             prefs[Keys.hidePageHeader] = next.hidePageHeader
             prefs[Keys.hideKeywords] = JSONArray(next.hideKeywords).toString()
+            prefs[Keys.allowedLanguages] = JSONArray(next.allowedLanguages).toString()
             prefs.remove(booleanPreferencesKey("hideComposeButton"))
         }
     }
@@ -59,18 +61,19 @@ class FilterSettingsStore(private val context: Context) {
             hideLiveContent = this[Keys.hideLiveContent] ?: d.hideLiveContent,
             hideOpenAppNags = this[Keys.hideOpenAppNags] ?: d.hideOpenAppNags,
             hidePageHeader = this[Keys.hidePageHeader] ?: d.hidePageHeader,
-            hideKeywords = FilterSettings.normalizedKeywords(decodeKeywords(this[Keys.hideKeywords])),
+            hideKeywords = FilterSettings.normalizedKeywords(decodeStringArray(this[Keys.hideKeywords])),
+            allowedLanguages = FilterSettings.normalizedLanguages(decodeStringArray(this[Keys.allowedLanguages])),
         )
     }
 
-    private fun decodeKeywords(raw: String?): List<String> {
+    private fun decodeStringArray(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
         return try {
             val arr = JSONArray(raw)
             buildList {
                 for (i in 0 until arr.length()) {
-                    val phrase = arr.optString(i)
-                    if (phrase.isNotEmpty()) add(phrase)
+                    val str = arr.optString(i)
+                    if (str.isNotEmpty()) add(str)
                 }
             }
         } catch (_: Exception) {

@@ -1,0 +1,1 @@
+Add language filter to hide posts in languages you do not read.
