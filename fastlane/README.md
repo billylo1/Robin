@@ -21,6 +21,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Play internal testing then TestFlight (Android first)
 
+### promote_both
+
+```sh
+[bundle exec] fastlane promote_both
+```
+
+Promote Android internal to production, then submit iOS TestFlight to App Store
+
 ----
 
 
@@ -74,6 +82,14 @@ Upload App Store listing metadata only (no binary)
 
 Bump iOS marketing+build, archive, submit to App Store
 
+### ios promote
+
+```sh
+[bundle exec] fastlane ios promote
+```
+
+Promote existing TestFlight build to App Store for review
+
 ----
 
 
@@ -110,6 +126,14 @@ Bump versionCode, build AAB, upload to Play internal testing
 ```
 
 Bump version, upload to Play internal, promote to production
+
+### android promote
+
+```sh
+[bundle exec] fastlane android promote
+```
+
+Promote existing internal track release to production
 
 ----
 
