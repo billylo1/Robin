@@ -233,6 +233,7 @@ async function runBenchmark(browserType, label, options = {}) {
     };
     window.__ROBIN_TEXT_SIZE_ADJUST__ = true;
     window.__ROBIN_HOME_RANKED__ = false;
+    window.__ROBIN_LATEST_OK__ = true;
   `);
 
   // Document start script injecting CSS and JS

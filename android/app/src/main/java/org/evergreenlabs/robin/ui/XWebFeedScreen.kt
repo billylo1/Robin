@@ -25,7 +25,6 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.InputDevice
 import android.view.MotionEvent
-import android.view.PixelCopy
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -48,8 +47,6 @@ import androidx.activity.compose.BackHandler
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -98,12 +95,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -141,7 +135,6 @@ private const val TAG = "XWebFeed"
 private const val X_HOME = "https://x.com/home"
 private const val NEAR_TOP_PX = 80
 private const val SCROLL_TOP_BUTTON_PX = 400
-private const val WARM_CROSSFADE_MS = 450
 
 private val OPEN_COMPOSE_JS = """
 (function() {
@@ -865,9 +858,6 @@ fun XWebFeedScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var warmReloadJob by remember { mutableStateOf<Job?>(null) }
-    /** Frozen old feed shown over the WebView during a warm reload; crossfaded out on boot. */
-    var warmSnapshot by remember { mutableStateOf<ImageBitmap?>(null) }
-    val warmSnapshotAlpha = remember { Animatable(1f) }
     val lastInteractionAtMs = remember { longArrayOf(System.currentTimeMillis()) }
     var isResumed by remember {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
@@ -935,64 +925,10 @@ fun XWebFeedScreen(
         showScrollTop = false
     }
 
-    fun clearWarmSnapshot() {
+    fun cancelWarmReload() {
         warmReloadJob?.cancel()
         warmReloadJob = null
-        warmSnapshot = null
         suppressNextHomeBootCoverState.value = false
-    }
-
-    suspend fun captureWebViewSnapshot(wv: WebView): Bitmap? = suspendCancellableCoroutine { cont ->
-        val activity = wv.context.findActivity()
-        val window = activity?.window
-        if (window == null || wv.width <= 0 || wv.height <= 0) {
-            val fallback = try {
-                val b = Bitmap.createBitmap(wv.width.coerceAtLeast(1), wv.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-                wv.draw(Canvas(b))
-                b
-            } catch (_: Throwable) {
-                null
-            }
-            if (cont.isActive) cont.resume(fallback)
-            return@suspendCancellableCoroutine
-        }
-
-        val location = IntArray(2)
-        wv.getLocationInWindow(location)
-        val rect = Rect(location[0], location[1], location[0] + wv.width, location[1] + wv.height)
-        val bmp = Bitmap.createBitmap(wv.width, wv.height, Bitmap.Config.ARGB_8888)
-        try {
-            PixelCopy.request(
-                window,
-                rect,
-                bmp,
-                { result ->
-                    if (!cont.isActive) return@request
-                    if (result == PixelCopy.SUCCESS) {
-                        cont.resume(bmp)
-                    } else {
-                        Log.w(TAG, "PixelCopy returned status $result; falling back to software draw")
-                        try {
-                            wv.draw(Canvas(bmp))
-                            cont.resume(bmp)
-                        } catch (_: Throwable) {
-                            cont.resume(null)
-                        }
-                    }
-                },
-                Handler(Looper.getMainLooper()),
-            )
-        } catch (e: Throwable) {
-            Log.w(TAG, "PixelCopy request failed", e)
-            if (cont.isActive) {
-                try {
-                    wv.draw(Canvas(bmp))
-                    cont.resume(bmp)
-                } catch (_: Throwable) {
-                    cont.resume(null)
-                }
-            }
-        }
     }
 
     fun hardReloadFeed(warm: Boolean, markRefresh: Boolean = true) {
@@ -1011,34 +947,21 @@ fun XWebFeedScreen(
         }
 
         if (warm && wv.width > 0 && wv.height > 0) {
-            // Freeze the old feed over the WebView, load underneath, and let
-            // RobinBoot.ready() crossfade the snapshot away — the blank document
-            // and boot-gated body are never visible.
             suppressNextHomeBootCoverState.value = true
             warmReloadJob = scope.launch {
-                val bmp = captureWebViewSnapshot(wv)
-                if (bmp != null) {
-                    warmSnapshotAlpha.snapTo(1f)
-                    warmSnapshot = bmp.asImageBitmap()
-                }
                 doLoad()
                 delay(5_500)
-                if (warmSnapshot != null) {
-                    suppressNextHomeBootCoverState.value = false
-                    warmSnapshotAlpha.animateTo(0f, tween(WARM_CROSSFADE_MS, easing = LinearOutSlowInEasing))
-                    warmSnapshot = null
-                }
+                suppressNextHomeBootCoverState.value = false
             }
         } else {
-            warmSnapshot = null
+            suppressNextHomeBootCoverState.value = false
             doLoad()
         }
     }
 
     /**
      * Cache-bypassing /home sometimes commits X's "Welcome to X!" empty state.
-     * Load once more under the cover or warm snapshot already up — a new
-     * snapshot would freeze the welcome screen.
+     * Load once more under the cover or warm reload state already up.
      */
     fun retryWelcomeLoad() {
         if (welcomeAutoRetryUsed) return
@@ -1047,22 +970,13 @@ fun XWebFeedScreen(
         Log.i(TAG, "welcome interstitial — reloading home once")
         warmReloadJob?.cancel()
         warmReloadJob = null
-        if (warmSnapshot != null) {
-            suppressNextHomeBootCoverState.value = true
+        if (suppressNextHomeBootCoverState.value) {
             warmReloadJob = scope.launch {
                 delay(5_500)
-                if (warmSnapshot != null) {
-                    suppressNextHomeBootCoverState.value = false
-                    warmSnapshotAlpha.animateTo(
-                        0f,
-                        tween(WARM_CROSSFADE_MS, easing = LinearOutSlowInEasing),
-                    )
-                    warmSnapshot = null
-                }
+                suppressNextHomeBootCoverState.value = false
             }
         } else {
-            clearWarmSnapshot()
-            suppressNextHomeBootCoverState.value = false
+            cancelWarmReload()
             if (!showBootCover) showBootCover = true
             wv.alpha = 0f
             coverDeadline++
@@ -1077,14 +991,14 @@ fun XWebFeedScreen(
         if (!pendingFeedSettingsReload) return
         if (infoPresented) return
         if (!isFeedHome(pageUrl)) return
-        clearWarmSnapshot()
+        cancelWarmReload()
         pendingFeedSettingsReload = false
         hardReloadFeed(warm = false, markRefresh = false)
     }
 
     fun canRefreshFeedNow(): Boolean {
         if (showBootCover) return false
-        if (warmSnapshot != null) return false
+        if (warmReloadJob != null) return false
         if (!isFeedHome(pageUrl)) return false
         if (scrollYPx[0] > NEAR_TOP_PX) return false
         if (progress in 0f..<1f && progress > 0f) return false
@@ -1162,7 +1076,7 @@ fun XWebFeedScreen(
         }
     }
 
-    LaunchedEffect(pageUrl, showBootCover, warmSnapshot, pendingFeedSettingsReload) {
+    LaunchedEffect(pageUrl, showBootCover, pendingFeedSettingsReload) {
         flushPendingFeedSettingsReloadIfNeeded()
     }
 
@@ -1186,7 +1100,7 @@ fun XWebFeedScreen(
                 Lifecycle.Event.ON_PAUSE -> {
                     wasPaused = true
                     isResumed = false
-                    clearWarmSnapshot()
+                    cancelWarmReload()
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     isResumed = true
@@ -1241,16 +1155,8 @@ fun XWebFeedScreen(
         showBootCover = false
         suppressNextHomeBootCoverState.value = false
         webViewRef?.alpha = 1f
-        if (warmSnapshot != null) {
-            warmReloadJob?.cancel()
-            warmReloadJob = scope.launch {
-                warmSnapshotAlpha.animateTo(
-                    0f,
-                    tween(WARM_CROSSFADE_MS, easing = LinearOutSlowInEasing),
-                )
-                warmSnapshot = null
-            }
-        }
+        warmReloadJob?.cancel()
+        warmReloadJob = null
     }
     welcomeRetryHolder.value = { retryWelcomeLoad() }
     revealBootHolder.value = { revealBoot() }
@@ -1794,7 +1700,6 @@ fun XWebFeedScreen(
                                     // clearing on the first one re-shows the spinner cover.
                                 } else {
                                     showBootCoverState.value = true
-                                    warmSnapshot = null
                                 }
                             }
                             if (isXHost(url)) {
@@ -1884,18 +1789,7 @@ fun XWebFeedScreen(
                 },
             )
 
-            warmSnapshot?.let { snapshot ->
-                Image(
-                    bitmap = snapshot,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .alpha(warmSnapshotAlpha.value),
-                )
-            }
-
-            if (progress in 0f..<1f && !showBootCover && warmSnapshot == null) {
+            if (progress in 0f..<1f && !showBootCover) {
                 LinearProgressIndicator(
                     progress = { progress },
                     modifier = Modifier
@@ -1912,7 +1806,7 @@ fun XWebFeedScreen(
         InfoSheet(
             onDismiss = { chrome.setInfoPresented(false) },
             onSignOut = {
-                clearWarmSnapshot()
+                cancelWarmReload()
                 showBootCoverState.value = true
                 signOutOfX(webViewRef)
             },

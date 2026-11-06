@@ -6,7 +6,10 @@
 
 /* Promoted / Ad placements (keep article combinator — videos use placementTracking too) */
 [data-testid="placementTracking"] article,
-a[href*="quick_promote_web"] {
+a[href*="quick_promote_web"],
+[data-mt-keyword-hide="1"],
+[data-mt-language-hide="1"],
+[data-mt-robin-hide="1"] {
   display: none !important;
 }
 

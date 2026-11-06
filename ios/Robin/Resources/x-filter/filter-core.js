@@ -1897,6 +1897,8 @@
       } catch (e) {}
     }
     notifyBootReady();
+    updateCaughtUpMarker();
+    trackViewedPosts();
   }
 
   function hasLoginCta() {
@@ -2190,18 +2192,33 @@
     var settings = currentSettings();
     if (!settings.forceFollowing) return;
 
-    var articles = document.querySelectorAll(
-      '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
-    );
-    if (!articles || !articles.length) return;
-
     var topVisibleArticle = null;
-    for (var i = 0; i < articles.length; i++) {
-      var art = articles[i];
-      if (isArticleHidden(art)) continue;
-      if (isArticleInViewport(art)) {
-        topVisibleArticle = art;
-        break;
+    if (typeof document.elementFromPoint === "function") {
+      var cx = (window.innerWidth || 390) / 2;
+      var cy = (window.innerHeight || 800) / 2;
+      var el =
+        document.elementFromPoint(cx, cy) ||
+        document.elementFromPoint(cx, 250) ||
+        document.elementFromPoint(cx, 120);
+      var pointArt = el && el.closest ? el.closest('article[data-testid="tweet"]') : null;
+      if (pointArt && !isArticleHidden(pointArt)) {
+        topVisibleArticle = pointArt;
+      }
+    }
+
+    if (!topVisibleArticle) {
+      var articles = document.querySelectorAll(
+        '[data-testid="cellInnerDiv"] article[data-testid="tweet"]'
+      );
+      if (!articles || !articles.length) return;
+
+      for (var i = 0; i < articles.length; i++) {
+        var art = articles[i];
+        if (isArticleHidden(art)) continue;
+        if (isArticleInViewport(art)) {
+          topVisibleArticle = art;
+          break;
+        }
       }
     }
 
@@ -2447,7 +2464,7 @@
   window.addEventListener("pagehide", persistSessionOnUnload);
   window.addEventListener("beforeunload", persistSessionOnUnload);
 
-  var DRAIN_BUDGET = 24;
+  var DRAIN_BUDGET = 64;
   var processedCells = typeof WeakSet === "function" ? new WeakSet() : null;
   var needsFullPass = true;
   var pendingNodes = [];
@@ -2483,12 +2500,110 @@
     if (!n || !n.isConnected || !n.querySelectorAll) return [];
     if (n.getAttribute && n.getAttribute("data-testid") === "cellInnerDiv") return [n];
     var cells = n.querySelectorAll('[data-testid="cellInnerDiv"]');
-    if (cells.length > 1) {
+    if (cells.length > 0) {
       var out = [];
       for (var i = 0; i < cells.length; i++) out.push(cells[i]);
       return out;
     }
     return [n];
+  }
+
+  function filterCell(cell) {
+    if (!cell || !cell.isConnected) return;
+    if (processedCells) processedCells.add(cell);
+
+    // 1. Focal status bypass
+    if (cellIsFocalStatus(cell)) {
+      unmarkKeywordHide(cell);
+      unmarkLanguageHide(cell);
+      return;
+    }
+
+    var settings = currentSettings();
+
+    // 2. Social context (repost time)
+    if (settings.preferLatest && isHomePath() && hasRepostTimes) {
+      labelRepostTimes(cell);
+    }
+
+    // 3. Who to follow / suggested follows
+    if (settings.hideWhoToFollow) {
+      hideWhoToFollowBlocks(cell);
+      if (cell.getAttribute("data-mt-robin-hide") === "1") {
+        return;
+      }
+    }
+
+    // 4. Live / Spaces / Broadcast promos
+    if (settings.hideLiveContent) {
+      if (cellLooksLikeLivePromo(cell)) {
+        markRobinHide(cell);
+        return;
+      }
+    }
+
+    // 5. Keyword & Language filtering (single pass over tweet text)
+    var patterns = keywordPatternsFor(settings);
+    var allowedSet = allowedLanguageSetFor(settings);
+
+    if (!patterns.length && !allowedSet) {
+      unmarkKeywordHide(cell);
+      unmarkLanguageHide(cell);
+      return;
+    }
+
+    var textNodes = cell.querySelectorAll
+      ? cell.querySelectorAll('[data-testid="tweetText"]')
+      : [];
+    if (!textNodes || !textNodes.length) {
+      // If no text nodes, leave visible (media-only or unhydrated)
+      unmarkKeywordHide(cell);
+      unmarkLanguageHide(cell);
+      return;
+    }
+
+    var fullText = "";
+    var hasAllowedLang = false;
+    var foundAnyLang = false;
+
+    for (var ti = 0; ti < textNodes.length; ti++) {
+      var tn = textNodes[ti];
+      var txt = tn.textContent || "";
+      if (txt) fullText += "\n" + txt;
+
+      if (allowedSet && !hasAllowedLang) {
+        var l = nodeDetectedLanguage(tn);
+        if (l) {
+          foundAnyLang = true;
+          if (allowedSet[l]) hasAllowedLang = true;
+        }
+      }
+    }
+
+    // Check keyword patterns
+    if (patterns.length) {
+      if (fullText && textHitsKeyword(fullText, patterns)) {
+        markKeywordHide(cell);
+      } else {
+        unmarkKeywordHide(cell);
+      }
+    } else {
+      unmarkKeywordHide(cell);
+    }
+
+    // Check allowed languages
+    if (allowedSet) {
+      if (!foundAnyLang) {
+        // No recognizable language or undetermined: keep visible
+        unmarkLanguageHide(cell);
+      } else if (hasAllowedLang) {
+        unmarkLanguageHide(cell);
+      } else {
+        markLanguageHide(cell);
+      }
+    } else {
+      unmarkLanguageHide(cell);
+    }
   }
 
   function tick() {
@@ -2507,13 +2622,15 @@
       hideOpenAppNags();
       hideWhoToFollowBlocks(document);
       hideLiveContentBlocks(document);
-      hideKeywordPosts(document);
-      hideLanguagePosts(document);
+      var allCells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
+      for (var ac = 0; ac < allCells.length; ac++) {
+        filterCell(allCells[ac]);
+      }
       hidePageHeaderFallback();
       hideComposeButtonFallback();
-      var allCells = document.querySelectorAll('[data-testid="cellInnerDiv"]');
-      if (processedCells) {
-        for (var ac = 0; ac < allCells.length; ac++) processedCells.add(allCells[ac]);
+      if (bootRevealed) {
+        trackViewedPosts();
+        updateCaughtUpMarker();
       }
     } else {
       var batch = pendingNodes;
@@ -2527,12 +2644,16 @@
       var limit = Math.min(work.length, DRAIN_BUDGET);
       for (var w = 0; w < limit; w++) {
         var n = work[w];
-        if (processedCells) processedCells.add(n);
-        labelRepostTimes(n);
-        hideWhoToFollowBlocks(n);
-        hideLiveContentBlocks(n);
-        hideKeywordPosts(n);
-        hideLanguagePosts(n);
+        if (n.getAttribute && n.getAttribute("data-testid") === "cellInnerDiv") {
+          filterCell(n);
+        } else {
+          if (processedCells) processedCells.add(n);
+          labelRepostTimes(n);
+          hideWhoToFollowBlocks(n);
+          hideLiveContentBlocks(n);
+          hideKeywordPosts(n);
+          hideLanguagePosts(n);
+        }
       }
       if (work.length > limit) {
         for (var k = limit; k < work.length; k++) rememberPending(work[k]);
@@ -2544,9 +2665,6 @@
       hideComposeButtonFallback();
       hideOpenAppNags();
     }
-
-    trackViewedPosts();
-    updateCaughtUpMarker();
 
     autoClickNewPostsPill();
     maybeRetryWelcome();
@@ -2625,7 +2743,17 @@
   function schedule() {
     if (scheduled) return;
     scheduled = true;
-    setTimeout(runScheduled, bootRevealed && scrolling ? 160 : 50);
+    if (bootRevealed && scrolling) {
+      setTimeout(runScheduled, 160);
+    } else if (
+      typeof requestAnimationFrame === "function" &&
+      typeof document !== "undefined" &&
+      !document.hidden
+    ) {
+      requestAnimationFrame(runScheduled);
+    } else {
+      setTimeout(runScheduled, 0);
+    }
   }
 
   function queueMountedCells() {
@@ -2718,6 +2846,8 @@
       }
       queueMountedCells();
       schedule();
+      trackViewedPosts();
+      updateCaughtUpMarker();
     }, 120);
   }
   window.addEventListener("scroll", onFeedScroll, { capture: true, passive: true });

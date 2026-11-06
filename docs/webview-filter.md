@@ -36,7 +36,7 @@ While filter-core settles the chosen home tab (Following or For You) / Latest / 
 
 iOS arms the cover from the **pending main-frame URL** (captured in `decidePolicyFor`) as well as `webView.url`, because during back-to-home provisional navigation `webView.url` can still be the status page.
 
-A cache-bypassing `/home` load sometimes commits X’s logged-in empty state (“Welcome to X!” / “Let’s go!”) instead of the timeline; the next full load returns the feed. Filter-core waits until the first home-timeline **response** arrives before clicking Following or Recent, so a tab click cannot abort that response into the empty state. The welcome interstitial is not treated as a settled feed. If that copy is still up after ~1.5s with no posts, filter-core asks the host once (`mtRetry` / `RobinBoot.retry()`) to load `/home` again under the boot cover or warm snapshot already showing. A second welcome in a row is left up when the cover times out.
+A cache-bypassing `/home` load sometimes commits X’s logged-in empty state (“Welcome to X!” / “Let’s go!”) instead of the timeline; the next full load returns the feed. Filter-core waits until the first home-timeline **response** arrives before clicking Following or Recent, so a tab click cannot abort that response into the empty state. The welcome interstitial is not treated as a settled feed. If that copy is still up after ~1.5s with no posts, filter-core asks the host once (`mtRetry` / `RobinBoot.retry()`) to load `/home` again under the boot cover or warm reload state already showing. A second welcome in a row is left up when the cover times out.
 
 ### Near-top auto-refresh (newer posts)
 
@@ -48,11 +48,11 @@ X’s mobile web does not reliably surface newer posts while Robin sits at the t
 
 Guards: feed home only, near top, not mid-load / boot cover, cooldown equal to the Settings **Auto-refresh** interval (Off / 30s / 1 min / 2 min / 5 min; default 5 min). Automatic triggers (poll, foreground return) also require the user to be idle: no touch, scroll, key, wheel, or pointer movement in the feed for ~20s (reported by the scroll probe via `mtInteract` / `RobinInteract`, plus a native touch listener on Android), and Settings not open. Title tap is user-initiated and skips the idle check. Off disables poll and foreground auto-refresh; title tap and the toolbar Refresh button still work.
 
-Flow: warm hard-reload of `https://x.com/home` with cache bypass (`reloadIgnoringLocalCacheData` / `LOAD_NO_CACHE`). Soft “Show N posts” clicks stay in filter-core’s MutationObserver auto-click path — host-driven refresh no longer goes through `__ROBIN_SOFT_REFRESH_FEED__`, because SPA `reload()` often reused a cached document and left the same stale Following posts in place. Warm reloads snapshot the current feed (`WKWebView.takeSnapshot` / `WebView.draw` into a `Bitmap`), overlay that image on the WebView, load underneath, then crossfade the snapshot away (~0.45s) on boot-ready (5.5s fallback). The boot-gated blank document is never visible, so there is no white flash.
+Flow: warm hard-reload of `https://x.com/home` with cache bypass (`reloadIgnoringLocalCacheData` / `LOAD_NO_CACHE`). Soft “Show N posts” clicks stay in filter-core’s MutationObserver auto-click path — host-driven refresh no longer goes through `__ROBIN_SOFT_REFRESH_FEED__`, because SPA `reload()` often reused a cached document and left the same stale Following posts in place. Warm reloads bypass local cache and update in place under the top progress indicator without freezing image snapshots or animating crossfades.
 
 While near the top of Following, filter-core also **auto-clicks** X’s own “Show N posts” pill as soon as it appears (MutationObserver tick, 2.5s throttle) — same affordance as desktop/mobile web, without waiting for a native refresh. That control often sits inside TopNavBar / sticky chrome that Robin hides; discovery ignores visibility and briefly clears those hides (`data-mt-reveal-feed-chrome`) for the click, then restores chrome.
 
-Title tap while scrolled down still only scrolls to top. The toolbar Refresh button always reloads (warm snapshot crossfade after first reveal).
+Title tap while scrolled down still only scrolls to top. The toolbar Refresh button always reloads.
 
 **Mac (iOS app on Mac):** keep polling while `.inactive` as well (window often stays visible without being key). Stop only on `.background` / disappear.
 

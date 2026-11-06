@@ -1,3 +1,4 @@
+Performance improvements for feed filtering and faster feed refreshes.
 Add language filter to hide posts in languages you do not read.
 Feed tabs no longer include the profile photo, X logo, or Subscribe button.
 Bug fixes and performance improvements.

@@ -148,9 +148,6 @@ struct XWebFeedView: View {
     @State private var bootCoverTimeoutTask: Task<Void, Never>?
     /// Next home document load skips the spinner cover (warm refresh shows a snapshot).
     @State private var suppressNextHomeBootCover = false
-    /// Frozen image of the old feed shown over the WebView during a warm reload,
-    /// crossfaded away once the new document posts `mtBoot`.
-    @State private var warmSnapshot: UIImage?
     @State private var lastFeedRefreshAt: Date?
     /// True after the app left the foreground at least once (skip initial `.active`).
     @State private var didLeaveActive = false
@@ -170,7 +167,6 @@ struct XWebFeedView: View {
 
     private static let scrollTopThreshold: CGFloat = 400
     private static let nearTopThreshold: CGFloat = 80
-    fileprivate static let warmCrossfadeSeconds: Double = 0.45
     /// Matches Android `RobinCream` / launcher mark field.
     private static let robinCream = Color(red: 0xF5 / 255, green: 0xF0 / 255, blue: 0xE8 / 255)
     /// Matches Android `RobinHeaderDark` / DarkColors.surface.
@@ -240,7 +236,7 @@ struct XWebFeedView: View {
     var body: some View {
         VStack(spacing: 0) {
             feedHeader
-            if progress > 0, progress < 1, !showBootCover, warmSnapshot == nil {
+            if progress > 0, progress < 1, !showBootCover {
                 ProgressView(value: progress)
                     .progressViewStyle(.linear)
             }
@@ -250,7 +246,6 @@ struct XWebFeedView: View {
                     pageURL: $pageURL,
                     progress: $progress,
                     showBootCover: $showBootCover,
-                    warmSnapshot: $warmSnapshot,
                     suppressNextHomeBootCover: $suppressNextHomeBootCover,
                     settings: filterStore.settings,
                     fontScale: fontScale.scale,
@@ -260,17 +255,6 @@ struct XWebFeedView: View {
                     onFactCheck: { req in activeFactCheck = req }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                if let warmSnapshot {
-                    Image(uiImage: warmSnapshot)
-                        .resizable()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .transition(.opacity)
-                        // Visual only — must not steal mouse hover from the WebView
-                        // during the crossfade (SwiftUI keeps exiting views hit-testable).
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
 
                 if showBootCover {
                     Color(.systemBackground)
@@ -298,7 +282,6 @@ struct XWebFeedView: View {
             InfoSheet(onSignOut: {
                 Analytics.track("sign_out")
                 cancelWarmReloadTask()
-                warmSnapshot = nil
                 showBootCover = true
                 XWebSession.signOut(webView: webView)
             })
@@ -537,7 +520,7 @@ struct XWebFeedView: View {
 
     private func canRefreshFeedNow() -> Bool {
         guard !showBootCover else { return false }
-        guard warmSnapshot == nil else { return false }
+        guard warmReloadTask == nil else { return false }
         guard isFeedHome(pageURL) else { return false }
         guard lastScrollY <= Self.nearTopThreshold else { return false }
         guard progress == 0 || progress >= 1 else { return false }
@@ -589,15 +572,14 @@ struct XWebFeedView: View {
         warmReloadTask = nil
     }
 
-    /// If a warm reload was interrupted before mtBoot, drop the frozen snapshot.
+    /// If a warm reload was interrupted before mtBoot, reset suppress state.
     private func restoreFeedOpacityIfNeeded() {
-        warmSnapshot = nil
+        cancelWarmReloadTask()
         suppressNextHomeBootCover = false
     }
 
     /// If a cache-bypassing /home load committed X's "Welcome to X!" empty
-    /// state, load once more under the cover or warm snapshot already up.
-    /// A new snapshot here would freeze the welcome screen.
+    /// state, load once more under the cover or warm reload state already up.
     private func retryWelcomeLoad() {
         guard !welcomeAutoRetryUsed, let webView else { return }
         welcomeAutoRetryUsed = true
@@ -608,9 +590,8 @@ struct XWebFeedView: View {
             cachePolicy: .reloadIgnoringLocalCacheData,
             timeoutInterval: 60
         )
-        if warmSnapshot != nil {
-            suppressNextHomeBootCover = true
-            armWarmSnapshotFallback()
+        if suppressNextHomeBootCover {
+            armWarmReloadFallback()
         } else {
             suppressNextHomeBootCover = false
             if !showBootCover { showBootCover = true }
@@ -628,15 +609,12 @@ struct XWebFeedView: View {
         }
     }
 
-    private func armWarmSnapshotFallback() {
+    private func armWarmReloadFallback() {
         warmReloadTask?.cancel()
         warmReloadTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
-            guard !Task.isCancelled, warmSnapshot != nil else { return }
+            guard !Task.isCancelled else { return }
             suppressNextHomeBootCover = false
-            withAnimation(.easeOut(duration: Self.warmCrossfadeSeconds)) {
-                warmSnapshot = nil
-            }
         }
     }
 
@@ -653,24 +631,14 @@ struct XWebFeedView: View {
         )
 
         if warm {
-            // Freeze the old feed over the WebView, load underneath, and let
-            // mtBoot crossfade the snapshot away — the blank document and
-            // boot-gated body are never visible.
             suppressNextHomeBootCover = true
             warmReloadTask = Task { @MainActor in
-                let image = try? await webView.takeSnapshot(configuration: nil)
-                guard !Task.isCancelled else { return }
-                warmSnapshot = image
                 webView.load(request)
                 try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
-                guard !Task.isCancelled, warmSnapshot != nil else { return }
+                guard !Task.isCancelled else { return }
                 suppressNextHomeBootCover = false
-                withAnimation(.easeOut(duration: Self.warmCrossfadeSeconds)) {
-                    warmSnapshot = nil
-                }
             }
         } else {
-            warmSnapshot = nil
             suppressNextHomeBootCover = false
             updateUserScripts(webView: webView, settings: filterStore.settings, fontScale: fontScale.scale)
             showBootCover = true
@@ -708,7 +676,6 @@ struct XWebFeedView: View {
         guard !chrome.infoPresented else { return }
         guard isFeedHome(pageURL) else { return }
         cancelWarmReloadTask()
-        warmSnapshot = nil
         pendingFeedSettingsReload = false
         hardReloadFeed(warm: false, markRefresh: false)
     }
@@ -748,7 +715,6 @@ private struct XWebViewRepresentable: UIViewRepresentable {
     @Binding var pageURL: URL?
     @Binding var progress: Double
     @Binding var showBootCover: Bool
-    @Binding var warmSnapshot: UIImage?
     @Binding var suppressNextHomeBootCover: Bool
     var settings: FilterSettings
     var fontScale: Double
@@ -762,7 +728,6 @@ private struct XWebViewRepresentable: UIViewRepresentable {
             pageURL: $pageURL,
             progress: $progress,
             showBootCover: $showBootCover,
-            warmSnapshot: $warmSnapshot,
             suppressNextHomeBootCover: $suppressNextHomeBootCover,
             settings: settings,
             fontScale: fontScale,
@@ -869,7 +834,6 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     @Binding var pageURL: URL?
     @Binding var progress: Double
     @Binding var showBootCover: Bool
-    @Binding var warmSnapshot: UIImage?
     @Binding var suppressNextHomeBootCover: Bool
     var liveSettings: FilterSettings
     var liveFontScale: Double
@@ -902,7 +866,6 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         pageURL: Binding<URL?>,
         progress: Binding<Double>,
         showBootCover: Binding<Bool>,
-        warmSnapshot: Binding<UIImage?>,
         suppressNextHomeBootCover: Binding<Bool>,
         settings: FilterSettings,
         fontScale: Double,
@@ -914,7 +877,6 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         _pageURL = pageURL
         _progress = progress
         _showBootCover = showBootCover
-        _warmSnapshot = warmSnapshot
         _suppressNextHomeBootCover = suppressNextHomeBootCover
         liveSettings = settings
         liveFontScale = fontScale
@@ -1022,11 +984,6 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     private func revealBootCover() {
         showBootCover = false
         suppressNextHomeBootCover = false
-        if warmSnapshot != nil {
-            withAnimation(.easeOut(duration: XWebFeedView.warmCrossfadeSeconds)) {
-                warmSnapshot = nil
-            }
-        }
     }
 
     /// Learn the new document's boot nonce so a late mtBoot from the welcome page cannot drop the cover.
@@ -1132,10 +1089,9 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             if suppressNextHomeBootCover {
                 // Warm reload: keep suppress until mtBoot. X may fire more than
                 // one provisional home navigation (redirects); clearing early
-                // would re-show the spinner over the snapshot.
+                // would re-show the spinner over the feed.
             } else {
                 showBootCover = true
-                warmSnapshot = nil
             }
         }
     }
