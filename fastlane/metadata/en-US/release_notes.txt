@@ -1,1 +1,1 @@
-Performance improvements for feed filtering and faster feed refreshes.
+Reliability improvements for fact-checking on iOS and Mac.
