@@ -3234,7 +3234,19 @@
       }
     }
 
-    if (!text) return null;
+    if (!text) text = "";
+
+    var images = [];
+    var imgEls = article.querySelectorAll('[data-testid="tweetPhoto"] img, [data-testid="card.wrapper"] img');
+    for (var j = 0; j < imgEls.length; j++) {
+      var imgSrc = imgEls[j].currentSrc || imgEls[j].src || imgEls[j].getAttribute("src") || "";
+      if (imgSrc && imgSrc.indexOf("http") === 0 && images.indexOf(imgSrc) === -1) {
+        images.push(imgSrc);
+        if (images.length >= 4) break;
+      }
+    }
+
+    if (!text && images.length === 0) return null;
 
     var userEl = article.querySelector('[data-testid="User-Name"]');
     var author = userEl ? (userEl.innerText || userEl.textContent || "").trim().replace(/\s+/g, " ") : "";
@@ -3255,13 +3267,14 @@
       text: text,
       author: author,
       url: tweetURL,
-      links: links
+      links: links,
+      images: images
     };
   }
 
   function triggerFactCheck(article) {
     var payload = extractTweetData(article);
-    if (!payload || !payload.text) return;
+    if (!payload || (!payload.text && (!payload.images || payload.images.length === 0))) return;
 
     article.classList.add("robin-factcheck-pulse");
     setTimeout(function () {

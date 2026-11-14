@@ -283,7 +283,6 @@ private class FactCheckBridge(
             runCatching {
                 val json = JSONObject(jsonStr)
                 val text = json.optString("text", "").trim()
-                if (text.isEmpty()) return@post
                 val author = json.optString("author").takeIf { it.isNotBlank() }
                 val url = json.optString("url").takeIf { it.isNotBlank() }
                 val linksArray = json.optJSONArray("links")
@@ -294,12 +293,22 @@ private class FactCheckBridge(
                         if (!item.isNullOrBlank()) links.add(item)
                     }
                 }
+                val imagesArray = json.optJSONArray("images")
+                val imageUrls = mutableListOf<String>()
+                if (imagesArray != null) {
+                    for (i in 0 until imagesArray.length()) {
+                        val item = imagesArray.optString(i)
+                        if (!item.isNullOrBlank()) imageUrls.add(item)
+                    }
+                }
+                if (text.isEmpty() && imageUrls.isEmpty()) return@post
                 onFactCheck(
                     FactCheckRequest(
                         text = text,
                         author = author,
                         tweetURL = url,
                         externalLinks = links,
+                        imageUrls = imageUrls,
                     )
                 )
             }.onFailure { e ->

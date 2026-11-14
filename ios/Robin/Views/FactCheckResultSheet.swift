@@ -3,11 +3,15 @@ import SafariServices
 import WebKit
 
 struct FactCheckRequest: Identifiable, Sendable {
-    var id: String { tweetURL?.absoluteString ?? String(text.prefix(60)) }
+    var id: String {
+        tweetURL?.absoluteString
+            ?? (text.isEmpty ? imageURLs.first?.absoluteString ?? UUID().uuidString : String(text.prefix(60)))
+    }
     var text: String
     var author: String?
     var tweetURL: URL?
     var externalLinks: [URL]
+    var imageURLs: [URL] = []
 }
 
 struct FactCheckSheet: View {
@@ -194,7 +198,8 @@ struct FactCheckSheet: View {
                 text: request.text,
                 author: request.author,
                 tweetURL: request.tweetURL,
-                externalLinks: request.externalLinks
+                externalLinks: request.externalLinks,
+                imageURLs: request.imageURLs
             )
             self.result = outcome.result
             self.isLoading = false

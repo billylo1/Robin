@@ -1,1 +1,1 @@
-Reliability improvements for fact-checking on iOS and Mac.
+Fact-checking now includes attached post images (such as screenshots and charts), including image-only posts.

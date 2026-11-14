@@ -908,10 +908,18 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             let tweetURL = urlStr.flatMap { URL(string: $0) }
             let linkStrs = dict["links"] as? [String] ?? []
             let links = linkStrs.compactMap { URL(string: $0) }
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            let imageStrs = dict["images"] as? [String] ?? []
+            let imageURLs = imageStrs.compactMap { URL(string: $0) }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !imageURLs.isEmpty else { return }
             DispatchQueue.main.async {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                self.onFactCheck(FactCheckRequest(text: text, author: author, tweetURL: tweetURL, externalLinks: links))
+                self.onFactCheck(FactCheckRequest(
+                    text: text,
+                    author: author,
+                    tweetURL: tweetURL,
+                    externalLinks: links,
+                    imageURLs: imageURLs
+                ))
             }
             return
         }

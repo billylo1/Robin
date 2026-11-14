@@ -1,3 +1,4 @@
+Fact-checking now includes attached post images (such as screenshots and charts), including image-only posts.
 Reliability improvements for fact-checking on iOS and Mac.
 Performance improvements for feed filtering and faster feed refreshes.
 Add language filter to hide posts in languages you do not read.

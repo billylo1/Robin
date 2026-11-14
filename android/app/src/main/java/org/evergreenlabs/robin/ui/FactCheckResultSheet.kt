@@ -55,6 +55,7 @@ data class FactCheckRequest(
     val author: String? = null,
     val tweetURL: String? = null,
     val externalLinks: List<String> = emptyList(),
+    val imageUrls: List<String> = emptyList(),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +88,7 @@ fun FactCheckSheet(
                 author = request.author,
                 tweetURL = request.tweetURL,
                 externalLinks = request.externalLinks,
+                imageUrls = request.imageUrls,
             )
             result = outcome.result
             isLoading = false
