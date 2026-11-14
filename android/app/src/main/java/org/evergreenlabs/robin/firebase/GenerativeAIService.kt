@@ -129,7 +129,7 @@ object GenerativeAIService {
                         "url" to Schema.string("Absolute https URL for the source."),
                     ),
                 ),
-                "Independent corroborating sources only — not the tweet permalink or x.com.",
+                "Leave empty ([]). Verified source URLs are attached from Google Search grounding metadata; never fabricate URLs.",
             ),
         ),
     )
@@ -391,7 +391,7 @@ object GenerativeAIService {
             "- Score bands: 1-3 mostly false/misleading; 4-6 mixed, unverified, or missing key context; 7-10 mostly accurate / well-supported.",
             "- Findings: return $DEFAULT_FINDING_COUNT claim objects. Each finding must include claim (short paraphrase), status (one of: verified, partially_verified, unverified, false_misleading), and note (one sentence of specific evidence or caveat).",
             "- Justification: exactly 3 short bullet points (string array) explaining the score in cautious, provisional language. Avoid definitive adverbs like 'precisely' or 'proven' unless evidence is overwhelming.",
-            "- Sources: independent corroborating sources with title and url. Never cite x.com or twitter.com.",
+            "- Sources: always [] (do not include, guess, or fabricate URLs in sources, findings, or justification; verified citations are attached automatically from Google Search grounding).",
             "- Respond in the language of the post.",
             "",
             "POST UNDER REVIEW:",
@@ -439,11 +439,8 @@ object GenerativeAIService {
         }
 
         val score = payload.score.coerceIn(1, 10)
-        val sources = payload.sources
-            ?.map { FactCheckSource(title = it.title, url = it.url) }
-            ?.filterNot { isSocialHost(it.url) }
-            ?.toMutableList()
-            ?: mutableListOf()
+        // Only surface tool-verified Google Search grounding citations; model-generated JSON `sources` are frequently hallucinated.
+        val sources = mutableListOf<FactCheckSource>()
 
         val grounding = response.candidates.firstOrNull()?.groundingMetadata
         grounding?.groundingChunks?.forEach { chunk ->

@@ -120,7 +120,7 @@ enum GenerativeAIService {
                         "url": .string(description: "Absolute https URL for the source."),
                     ]
                 ),
-                description: "Independent corroborating sources only — not the tweet permalink or x.com."
+                description: "Leave empty ([]). Verified source URLs are attached from Google Search grounding metadata; never fabricate URLs."
             ),
         ]
     )
@@ -364,7 +364,7 @@ enum GenerativeAIService {
             "- Score bands: 1-3 mostly false/misleading; 4-6 mixed, unverified, or missing key context; 7-10 mostly accurate / well-supported.",
             "- Findings: return \(findingCount) claim objects. Each finding must include claim (short paraphrase), status (one of: verified, partially_verified, unverified, false_misleading), and note (one sentence of specific evidence or caveat).",
             "- Justification: exactly 3 short bullet points (string array) explaining the score in cautious, provisional language. Avoid definitive adverbs like 'precisely' or 'proven' unless evidence is overwhelming.",
-            "- Sources: independent corroborating sources with title and url. Never cite x.com or twitter.com.",
+            "- Sources: always [] (do not include, guess, or fabricate URLs in sources, findings, or justification; verified citations are attached automatically from Google Search grounding).",
             "- Respond in the language of the post.",
             "",
             "POST UNDER REVIEW:"
@@ -418,9 +418,8 @@ enum GenerativeAIService {
         }
 
         let score = min(10, max(1, payload.score))
-        var sources = (payload.sources ?? []).filter { source in
-            !isSocialHost(sourceURL: source.url)
-        }
+        // Only surface tool-verified Google Search grounding citations; model-generated JSON `sources` are frequently hallucinated.
+        var sources: [FactCheckSource] = []
 
         let grounding = response.candidates.first?.groundingMetadata
         if let grounding {

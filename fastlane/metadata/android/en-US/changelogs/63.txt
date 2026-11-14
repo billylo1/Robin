@@ -1,0 +1,1 @@
+Improved fact-checking citation accuracy: source links now come only from verified Google Search grounding, eliminating broken or fabricated URLs.
