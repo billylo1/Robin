@@ -1,0 +1,67 @@
+appId: org.evergreenlabs.robin
+---
+# ==============================================================================
+# Robin Smart Preflight Regression Test
+# ==============================================================================
+# Verifies critical preflight deployment functionality on Android / iOS:
+#   1. Authentication (auto-login if logged out, or pass-through if active)
+#   2. Feed Refresh (top bar action & timeline responsiveness)
+#   3. Post Compose UI (open compose, assert elements, dismiss safely)
+#   4. Feed Mode Switching (switch to 'For You', verify reload, switch back)
+# ==============================================================================
+
+# Phase 1: Launch & Ensure Authenticated
+- launchApp:
+    clearState: false
+
+- runFlow:
+    file: login.yaml
+
+# Phase 2: Verify Main Feature - Refresh
+- tapOn: "Refresh"
+- extendedWaitUntil:
+    visible: "Refresh"
+    timeout: 15000
+
+# Phase 3: Verify Main Feature - Post Compose
+- tapOn: "New post"
+- extendedWaitUntil:
+    visible: "Post"
+    timeout: 10000
+# Dismiss compose modal safely back to timeline
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "Refresh"
+    timeout: 10000
+- assertVisible: "New post"
+
+# Phase 4: Verify Main Feature - Feed Type Changes
+# 4a: Switch to 'For You' mode
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Home Feed"
+    timeout: 10000
+- tapOn: "For You"
+- runFlow:
+    when:
+      visible: "Done"
+    commands:
+      - tapOn: "Done"
+- extendedWaitUntil:
+    visible: "Refresh"
+    timeout: 15000
+
+# 4b: Switch back to 'Following (by time)' mode
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Home Feed"
+    timeout: 10000
+- tapOn: "Following (by time)"
+- runFlow:
+    when:
+      visible: "Done"
+    commands:
+      - tapOn: "Done"
+- extendedWaitUntil:
+    visible: "Refresh"
+    timeout: 15000

@@ -15,6 +15,7 @@ final class FilterSettingsStore {
         static let hidePageHeader = "xfilter:hidePageHeader"
         static let hideKeywords = "xfilter:hideKeywords"
         static let allowedLanguages = "xfilter:allowedLanguages"
+        static let forYouQualityFilter = "xfilter:forYouQualityFilter"
     }
 
     private let defaults: UserDefaults
@@ -45,6 +46,7 @@ final class FilterSettingsStore {
         defaults.set(s.hidePageHeader, forKey: Keys.hidePageHeader)
         defaults.set(s.hideKeywords, forKey: Keys.hideKeywords)
         defaults.set(s.allowedLanguages, forKey: Keys.allowedLanguages)
+        defaults.set(s.forYouQualityFilter.rawValue, forKey: Keys.forYouQualityFilter)
         defaults.removeObject(forKey: "xfilter:hideComposeButton")
     }
 
@@ -68,7 +70,10 @@ final class FilterSettingsStore {
             ),
             allowedLanguages: FilterSettings.normalizedLanguages(
                 defaults.stringArray(forKey: Keys.allowedLanguages) ?? []
-            )
+            ),
+            forYouQualityFilter: defaults.string(forKey: Keys.forYouQualityFilter)
+                .flatMap(ForYouQualityFilterMode.init(rawValue:))
+                ?? d.forYouQualityFilter
         )
     }
 }

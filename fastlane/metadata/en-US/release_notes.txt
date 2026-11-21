@@ -1,1 +1,1 @@
-Improved fact-checking citation accuracy: source links now come only from verified Google Search grounding, eliminating broken or fabricated URLs.
+Added Smart (AI) quality filtering for For You and category feeds to hide non-human aggregators, engagement bait, AI slop, and useless comments while keeping accounts you follow.

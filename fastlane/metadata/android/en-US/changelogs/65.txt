@@ -1,0 +1,1 @@
+Added Smart (AI) quality filtering for For You and category feeds to hide non-human aggregators, engagement bait, AI slop, and useless comments while keeping accounts you follow.

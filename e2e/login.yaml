@@ -1,0 +1,52 @@
+appId: org.evergreenlabs.robin
+---
+- launchApp:
+    clearState: false
+
+# Step 1: If username field is visible, enter username
+- runFlow:
+    when:
+      visible: "Email or username"
+    commands:
+      - tapOn: "Email or username"
+      - inputText: ${USERNAME}
+      - hideKeyboard
+      - tapOn: "Continue"
+
+# Step 1b: Handle optional "unusual activity" username re-prompt if X presents it
+- runFlow:
+    when:
+      visible: "Phone or username"
+    commands:
+      - tapOn: "Phone or username"
+      - inputText: ${USERNAME}
+      - hideKeyboard
+      - tapOn: "Next"
+
+# Step 2: Enter password
+- runFlow:
+    when:
+      visible: "Password"
+    commands:
+      - tapOn: "Password"
+      - inputText: ${PASSWORD}
+      - hideKeyboard
+      - tapOn: "Continue"
+
+# Step 3: Enter 2FA TOTP code
+- runFlow:
+    when:
+      visible: ".*two factor code.*"
+    commands:
+      - tapOn:
+          point: "20%,35%"
+      - inputText: ${TOTP}
+      - hideKeyboard
+      - tapOn:
+          text: "Continue"
+          optional: true
+
+# Step 4: Verify authenticated home timeline is reached
+- extendedWaitUntil:
+    visible: "Refresh"
+    timeout: 30000

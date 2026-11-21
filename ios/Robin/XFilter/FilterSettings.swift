@@ -15,6 +15,23 @@ enum HomeFeedMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Quality filter mode for the algorithmic "For You" feed.
+enum ForYouQualityFilterMode: String, CaseIterable, Identifiable, Sendable {
+    case off
+    case local
+    case ai
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .off: "Off"
+        case .local: "Fast (Local)"
+        case .ai: "Smart (AI)"
+        }
+    }
+}
+
 /// Defaults for the injected x-filter core (no chrome.storage).
 /// Host serializes these onto `window.__ROBIN_SETTINGS__` before filter-core.js.
 struct FilterSettings: Equatable, Sendable {
@@ -33,6 +50,8 @@ struct FilterSettings: Equatable, Sendable {
     var hideKeywords: [String] = []
     /// Allowed post languages (e.g. ["en", "zh"]). Empty allows all languages.
     var allowedLanguages: [String] = []
+    /// Hide non-human / aggregator / engagement-bait / useless posts on For You.
+    var forYouQualityFilter: ForYouQualityFilterMode = .ai
 
     static let keywordMaxCount = 40
     static let keywordMaxLength = 80
@@ -103,7 +122,7 @@ struct FilterSettings: Equatable, Sendable {
         let keywords = hideKeywords.map(Self.jsonStringLiteral).joined(separator: ",")
         let languages = allowedLanguages.map(Self.jsonStringLiteral).joined(separator: ",")
         return """
-        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideKeywords":[\(keywords)],"allowedLanguages":[\(languages)],"fontScale":\(fontScale)}
+        {"forceFollowing":\(forceFollowing),"hideForYouTab":\(hideForYouTab),"hidePromoted":\(hidePromoted),"preferLatest":\(preferLatest),"hideWhoToFollow":\(hideWhoToFollow),"hideLiveContent":\(hideLiveContent),"hideOpenAppNags":\(hideOpenAppNags),"hidePageHeader":\(hidePageHeader),"hideKeywords":[\(keywords)],"allowedLanguages":[\(languages)],"forYouQualityFilter":"\(forYouQualityFilter.rawValue)","fontScale":\(fontScale)}
         """
     }
 

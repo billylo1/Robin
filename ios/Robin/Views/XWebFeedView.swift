@@ -773,6 +773,10 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         )
         config.userContentController.add(
             context.coordinator,
+            name: "robinFeedFilter"
+        )
+        config.userContentController.add(
+            context.coordinator,
             name: "robinSentry"
         )
         config.userContentController.addUserScript(
@@ -825,6 +829,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         ucc.removeScriptMessageHandler(forName: "mtRetry")
         ucc.removeScriptMessageHandler(forName: "mtInteract")
         ucc.removeScriptMessageHandler(forName: "robinFactCheck")
+        ucc.removeScriptMessageHandler(forName: "robinFeedFilter")
         ucc.removeScriptMessageHandler(forName: "robinSentry")
     }
 }
@@ -895,9 +900,49 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
             || originHost == "twitter.com" || originHost.hasSuffix(".twitter.com")
         guard isXOrigin else { return }
 
-        // Boot, retry, fact-check, and Sentry diagnostics must only be accepted from the main frame
-        if message.name == "robinFactCheck" || message.name == "robinSentry" || message.name == "mtBoot" || message.name == "mtRetry" {
+        // Boot, retry, fact-check, feed-filter, and Sentry diagnostics must only be accepted from the main frame
+        if message.name == "robinFactCheck" || message.name == "robinFeedFilter" || message.name == "robinSentry" || message.name == "mtBoot" || message.name == "mtRetry" {
             guard message.frameInfo.isMainFrame else { return }
+        }
+
+        if message.name == "robinFeedFilter" {
+            guard let body = message.body as? [String: Any],
+                  JSONSerialization.isValidJSONObject(body),
+                  let rawData = try? JSONSerialization.data(withJSONObject: body),
+                  let webView = message.webView else { return }
+
+            struct IncomingBatch: Decodable {
+                var posts: [FeedQualityPost]?
+                var localHidden: [String]?
+                var followedExempt: Int?
+                var mode: String?
+            }
+            guard let batch = try? JSONDecoder().decode(IncomingBatch.self, from: rawData) else { return }
+            let posts = batch.posts ?? []
+            let localHidden = batch.localHidden ?? []
+            NSLog(
+                "FeedQuality: HomeTimeline mode=%@ followedExempt=%d localHidden=%d [%@] aiCandidates=%d",
+                batch.mode ?? liveSettings.forYouQualityFilter.rawValue,
+                batch.followedExempt ?? 0,
+                localHidden.count,
+                localHidden.joined(separator: ", "),
+                posts.count
+            )
+            guard liveSettings.forYouQualityFilter == .ai, !posts.isEmpty else { return }
+
+            Task { [weak webView] in
+                let result = await FeedQualityService.shared.classifyBatch(posts)
+                guard !result.hidden.isEmpty || !result.keptIds.isEmpty,
+                      let encoded = try? JSONEncoder().encode(result),
+                      let jsonStr = String(data: encoded, encoding: .utf8) else { return }
+                await MainActor.run {
+                    webView?.evaluateJavaScript(
+                        "window.__ROBIN_APPLY_FEED_FILTER__ && window.__ROBIN_APPLY_FEED_FILTER__(\(jsonStr));",
+                        completionHandler: nil
+                    )
+                }
+            }
+            return
         }
 
         if message.name == "robinFactCheck" {

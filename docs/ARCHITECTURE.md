@@ -1,6 +1,6 @@
 # Architecture
 
-Robin is a native **Android** and **iOS** client that loads **x.com** in a WebView and injects shared filters so the timeline stays ad-light and defaults to Following (For You is optional in Settings). Robin uses a dedicated Firebase project (`robin-evergreen`) strictly for Firebase AI Logic (Gemini 3.8 Flash fact-checking protected by App Check). There is no Robin custom backend server or Firestore sync — X sign-in is the WebView cookie session.
+Robin is a native **Android** and **iOS** client that loads **x.com** in a WebView and injects shared filters so the timeline stays ad-light and defaults to Following (For You is optional in Settings). Robin uses a dedicated Firebase project (`robin-evergreen`) for Firebase AI Logic (Gemini 3.8 Flash fact-checking) and a stateless App-Check-verified Cloud Function v2 (`classifyForYouFeed`) that calls the Gemini Decisions API (`gemini-decision-1`) to filter low-quality For You posts. There is no Firestore timeline sync or user database — X sign-in is the WebView cookie session.
 
 ## Goals
 

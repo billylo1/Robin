@@ -86,7 +86,7 @@ struct InfoSheet: View {
                     }
                 }
 
-                Section("Home Feed") {
+                Section {
                     Picker(
                         "Home Feed",
                         selection: Binding(
@@ -105,6 +105,28 @@ struct InfoSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+
+                    if filterStore.settings.homeFeedMode == .forYou || !filterStore.settings.hidePageHeader {
+                        Picker(
+                            "Filter Low-Quality Posts",
+                            selection: Binding(
+                                get: { filterStore.settings.forYouQualityFilter },
+                                set: { mode in
+                                    filterStore.update { $0.forYouQualityFilter = mode }
+                                }
+                            )
+                        ) {
+                            ForEach(ForYouQualityFilterMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Home Feed")
+                } footer: {
+                    if filterStore.settings.homeFeedMode == .forYou || !filterStore.settings.hidePageHeader {
+                        Text("Hides non-human aggregators, engagement bait, AI slop, and useless comments on For You and category tabs. Following and followed accounts are never hidden.")
+                    }
                 }
 
                 Section("Filter") {

@@ -1,0 +1,16 @@
+appId: org.evergreenlabs.robin
+---
+- launchApp:
+    clearState: false
+
+- runFlow:
+    when:
+      visible: "Settings"
+    commands:
+      - tapOn: "Settings"
+      - scroll
+      - scroll
+      - tapOn: "Sign out"
+      - tapOn:
+          text: "Sign out"
+          optional: true

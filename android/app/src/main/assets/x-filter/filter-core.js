@@ -17,6 +17,7 @@
  *   (X compose FAB is always hidden; hosts use a native New post control)
  *   hideKeywords: string[] (default []) — whole-word / phrase hides (cat ≠ category)
  *   allowedLanguages: string[] (default []) — post languages to show; hides others (e.g. ['en', 'zh'])
+ *   forYouQualityFilter: "off" | "local" | "ai" (default "ai") — hide non-human/aggregator/bait/useless posts on For You
  *   fontScale: number (default 1) — page zoom for text size
  * iOS host sets window.__ROBIN_TEXT_SIZE_ADJUST__: WKWebView text ignores html
  * zoom, so scale is applied via -webkit-text-size-adjust instead.
@@ -39,8 +40,15 @@
   // the "Welcome to X!" empty state until the next full document load.
   var homeResponseSeen = false;
   var HOME_OP_RE = /\/graphql\/[^/]+\/(HomeLatestTimeline|HomeTimeline)\b/;
+  var QUALITY_TIMELINE_OP_RE = /\/graphql\/[^/]+\/(HomeLatestTimeline|HomeTimeline|GenericTimelineById|ListLatestTweetsTimeline|CommunityTweetsTimeline|TopicTimeline)\b/;
+  window.__ROBIN_QUALITY_FEED_ACTIVE__ = false;
+
   function homeOpOf(url) {
     var m = HOME_OP_RE.exec(String(url || ""));
+    return m ? m[1] : "";
+  }
+  function qualityTimelineOpOf(url) {
+    var m = QUALITY_TIMELINE_OP_RE.exec(String(url || ""));
     return m ? m[1] : "";
   }
   function noteHomeRequest(op, url, body) {
@@ -83,20 +91,65 @@
       hasRepostTimes = true;
     }
   }
-  function collectRepostTimes(text) {
+  function extractTimelineInstructions(parsed) {
+    var d = parsed && parsed.data;
+    if (!d) return [];
+    if (d.home && d.home.home_timeline_urt && d.home.home_timeline_urt.instructions) {
+      return d.home.home_timeline_urt.instructions;
+    }
+    if (d.timeline && d.timeline.timeline && d.timeline.timeline.instructions) {
+      return d.timeline.timeline.instructions;
+    }
+    if (
+      d.list &&
+      d.list.tweets_timeline &&
+      d.list.tweets_timeline.timeline &&
+      d.list.tweets_timeline.timeline.instructions
+    ) {
+      return d.list.tweets_timeline.timeline.instructions;
+    }
+    var comm = d.communityResults && d.communityResults.result;
+    if (comm) {
+      var ct = comm.ranked_community_timeline || comm.community_timeline;
+      if (ct && ct.timeline && ct.timeline.instructions) return ct.timeline.instructions;
+    }
+    var topic = d.topic_by_rest_id && d.topic_by_rest_id.topic_page;
+    if (topic && topic.body && topic.body.timeline && topic.body.timeline.instructions) {
+      return topic.body.timeline.instructions;
+    }
+    return [];
+  }
+
+  function collectHomeTimelineData(op, text) {
     try {
-      var ins = JSON.parse(text).data.home.home_timeline_urt.instructions || [];
+      var isFollowingOp = op === "HomeLatestTimeline";
+      window.__ROBIN_QUALITY_FEED_ACTIVE__ = !isFollowingOp;
+      var ins = extractTimelineInstructions(JSON.parse(text));
+      var batch = [];
+      var stats = { localHidden: [], followedExempt: 0 };
       for (var i = 0; i < ins.length; i++) {
         var es = ins[i].entries || [];
         for (var k = 0; k < es.length; k++) {
           var c = es[k].content || {};
-          if (c.itemContent) collectRepost(c.itemContent);
+          if (c.itemContent) {
+            if (isFollowingOp || op === "HomeTimeline") collectRepost(c.itemContent);
+            if (!isFollowingOp) collectQualityCandidate(c.itemContent, batch, stats);
+          }
           var items = c.items || [];
           for (var n = 0; n < items.length; n++) {
-            collectRepost(items[n].item && items[n].item.itemContent);
+            var ic = items[n].item && items[n].item.itemContent;
+            if (!ic) continue;
+            if (isFollowingOp || op === "HomeTimeline") collectRepost(ic);
+            if (!isFollowingOp) collectQualityCandidate(ic, batch, stats);
           }
         }
       }
+      if (!isFollowingOp) {
+        if (batch.length || stats.localHidden.length) {
+          dispatchQualityAiBatches(batch, stats);
+        }
+      }
+      if (typeof hideQualityPosts === "function") hideQualityPosts(document, true);
     } catch (e) {}
   }
 
@@ -104,14 +157,20 @@
     var origOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
       var op = homeOpOf(url);
+      var qOp = qualityTimelineOpOf(url);
       this.__mtHomeOp = op;
       this.__mtHomeUrl = url;
-      if (op) {
+      this.__mtQualityOp = qOp;
+      if (op || qOp) {
         var xhr = this;
         xhr.addEventListener("load", function () {
-          noteHomeRequest(xhr.__mtHomeOp, xhr.__mtHomeUrl, xhr.__mtHomeBody);
-          homeResponseSeen = true;
-          if (typeof xhr.responseText === "string") collectRepostTimes(xhr.responseText);
+          if (xhr.__mtHomeOp) {
+            noteHomeRequest(xhr.__mtHomeOp, xhr.__mtHomeUrl, xhr.__mtHomeBody);
+            homeResponseSeen = true;
+          }
+          if (typeof xhr.responseText === "string" && xhr.__mtQualityOp) {
+            collectHomeTimelineData(xhr.__mtQualityOp, xhr.responseText);
+          }
         });
       }
       return origOpen.apply(this, arguments);
@@ -127,12 +186,17 @@
         var p = origFetch.apply(this, arguments);
         var url = typeof input === "string" ? input : input && input.url;
         var op = homeOpOf(url);
-        if (op) {
+        var qOp = qualityTimelineOpOf(url);
+        if (op || qOp) {
           var body = init && init.body;
           p.then(function (res) {
-            noteHomeRequest(op, url, body);
-            homeResponseSeen = true;
-            return res.clone().text().then(collectRepostTimes);
+            if (op) {
+              noteHomeRequest(op, url, body);
+              homeResponseSeen = true;
+            }
+            return res.clone().text().then(function (txt) {
+              if (qOp) collectHomeTimelineData(qOp, txt);
+            });
           }).catch(function () {});
         }
         return p;
@@ -151,8 +215,239 @@
     hidePageHeader: true,
     hideKeywords: [],
     allowedLanguages: [],
+    forYouQualityFilter: "ai",
     fontScale: 1,
   };
+
+  // --- For You Quality Filter (Tier 0 cache + Tier 1 heuristics + Tier 2 Decisions API bridge) ---
+  var QUALITY_BATCH_MAX = 20;
+  var QUALITY_CACHE_MAX = 1000;
+  var qualityDecisionById = {};
+  var qualityDecisionOrder = [];
+  var qualityQueuedById = {};
+  var qualityHiddenHandles = {};
+
+  var RE_QUALITY_ATTRIBUTION = /(?:^|\s)(?:by|via|cc|credit:?|h\/t)\s+@\w+/i;
+  var RE_QUALITY_BAIT_CTA =
+    /\b(?:comment|reply)\s+["'“”]?[a-z0-9]{1,20}["'“”]?\s+(?:and\s+i(?:'|’)?ll|to\s+get|for\s+(?:the\s+)?(?:link|dm|guide|access))|\b(?:like|rt|retweet)\s*\+\s*(?:rt|retweet|follow)|\bwrong\s+answers\s+only\b/i;
+  var RE_QUALITY_USELESS_SHORT =
+    /^(?:this\.?|facts\.?|100%|true\.?|so true\.?|real\.?|agreed\.?|agree\??|lfg!?|wow!?|insane!?|crazy!?|huge if true\.?|based\.?|same\.?|yes\.?|no\.?|exact(?:ly)?\.?|[\s!?.,\u2600-\u27bf\ud83c-\ud83e\udc00-\udfff]+)$/i;
+  var RE_QUALITY_BOT_BIO =
+    /\b(?:automated\s+account|bot\s+account|parody\s+account|daily\s+ai\s+news|dm\s+for\s+promo|paid\s+promo)\b/i;
+
+  function qualityFilterMode(settings) {
+    var s = settings || currentSettings();
+    var m = s && s.forYouQualityFilter;
+    if (m === "off" || m === "local" || m === "ai") return m;
+    return "ai";
+  }
+
+  function rememberQualityDecision(id, verdict) {
+    if (!id) return;
+    if (!Object.prototype.hasOwnProperty.call(qualityDecisionById, id)) {
+      qualityDecisionOrder.push(id);
+      if (qualityDecisionOrder.length > QUALITY_CACHE_MAX) {
+        var oldest = qualityDecisionOrder.shift();
+        delete qualityDecisionById[oldest];
+        delete qualityQueuedById[oldest];
+      }
+    }
+    qualityDecisionById[id] = verdict;
+  }
+
+  function qualityClampStr(s, maxLen) {
+    if (typeof s !== "string") return "";
+    return s.replace(/\s+/g, " ").trim().slice(0, maxLen);
+  }
+
+  function evaluateLocalQuality(meta) {
+    if (!meta || meta.following) return "";
+    var text = meta.text || "";
+    var hashtags = meta.hashtagCount || 0;
+    if (hashtags >= 7) return "hashtag_spam";
+    if (hashtags >= 4 && RE_QUALITY_ATTRIBUTION.test(text)) return "aggregator_attribution";
+    if (RE_QUALITY_BAIT_CTA.test(text)) return "engagement_bait_cta";
+    if (
+      !meta.hasMedia &&
+      !meta.hasUrls &&
+      text.length > 0 &&
+      text.length <= 28 &&
+      RE_QUALITY_USELESS_SHORT.test(text)
+    ) {
+      return "useless_short";
+    }
+    if (meta.bio && RE_QUALITY_BOT_BIO.test(meta.bio)) {
+      return "bot_bio";
+    }
+    return "";
+  }
+
+  function collectQualityCandidate(itemContent, batch, stats) {
+    var mode = qualityFilterMode();
+    if (mode === "off") return;
+    if (!itemContent || itemContent.promotedMetadata) return;
+    var r = unwrapTweet(
+      itemContent.tweet_results && itemContent.tweet_results.result
+    );
+    if (!r || !r.legacy) return;
+    var lg = r.legacy;
+    var rt = unwrapTweet(
+      lg.retweeted_status_result && lg.retweeted_status_result.result
+    );
+    var source = rt || r;
+    var displayId = String((source && source.rest_id) || r.rest_id || "");
+    if (!displayId) return;
+
+    var outerUser = (r.core && r.core.user_results && r.core.user_results.result) || {};
+    var sourceUser =
+      (source.core && source.core.user_results && source.core.user_results.result) ||
+      outerUser;
+    var following = Boolean(
+      (outerUser.relationship_perspectives && outerUser.relationship_perspectives.following) ||
+        (outerUser.legacy && outerUser.legacy.following) ||
+        (sourceUser.relationship_perspectives &&
+          sourceUser.relationship_perspectives.following) ||
+        (sourceUser.legacy && sourceUser.legacy.following)
+    );
+    if (following) {
+      rememberQualityDecision(displayId, "keep");
+      if (stats) stats.followedExempt++;
+      return;
+    }
+
+    var handle = String(
+      (sourceUser.core && sourceUser.core.screen_name) ||
+        (sourceUser.legacy && sourceUser.legacy.screen_name) ||
+        (outerUser.core && outerUser.core.screen_name) ||
+        (outerUser.legacy && outerUser.legacy.screen_name) ||
+        ""
+    );
+    var handleLower = handle.toLowerCase();
+    if (handleLower && qualityHiddenHandles[handleLower]) {
+      rememberQualityDecision(displayId, "hide");
+      if (stats) stats.localHidden.push("@" + handle + "(cached_acct)");
+      return;
+    }
+    if (qualityDecisionById[displayId]) return;
+
+    var srcLegacy = source.legacy || {};
+    var noteText =
+      source.note_tweet &&
+      source.note_tweet.note_tweet_results &&
+      source.note_tweet.note_tweet_results.result &&
+      source.note_tweet.note_tweet_results.result.text;
+    var text = qualityClampStr(noteText || srcLegacy.full_text || "", 400);
+    var quoted = unwrapTweet(
+      source.quoted_status_result && source.quoted_status_result.result
+    );
+    var quotedText = quoted
+      ? qualityClampStr(
+          (quoted.note_tweet &&
+            quoted.note_tweet.note_tweet_results &&
+            quoted.note_tweet.note_tweet_results.result &&
+            quoted.note_tweet.note_tweet_results.result.text) ||
+            (quoted.legacy && quoted.legacy.full_text) ||
+            "",
+          160
+        )
+      : "";
+    if (!text && !quotedText) return;
+
+    var entities = srcLegacy.entities || {};
+    var hashtagsArr = entities.hashtags || [];
+    var urlsArr = entities.urls || [];
+    var mediaArr =
+      (srcLegacy.extended_entities && srcLegacy.extended_entities.media) ||
+      entities.media ||
+      [];
+    var bio = qualityClampStr(
+      (sourceUser.profile_bio && sourceUser.profile_bio.description) ||
+        (sourceUser.legacy && sourceUser.legacy.description) ||
+        "",
+      120
+    );
+    var name = qualityClampStr(
+      (sourceUser.core && sourceUser.core.name) ||
+        (sourceUser.legacy && sourceUser.legacy.name) ||
+        "",
+      80
+    );
+
+    var meta = {
+      id: displayId,
+      handle: handle,
+      name: name,
+      bio: bio,
+      following: false,
+      isBlue: Boolean(sourceUser.is_blue_verified),
+      followers:
+        sourceUser.legacy && typeof sourceUser.legacy.followers_count === "number"
+          ? sourceUser.legacy.followers_count
+          : null,
+      friends:
+        sourceUser.legacy && typeof sourceUser.legacy.friends_count === "number"
+          ? sourceUser.legacy.friends_count
+          : null,
+      isReply: Boolean(srcLegacy.in_reply_to_status_id_str),
+      isRetweet: Boolean(rt),
+      isQuote: Boolean(quoted),
+      hasMedia: Boolean(mediaArr.length),
+      hasUrls: Boolean(urlsArr.length),
+      hashtagCount: hashtagsArr.length,
+      text: text,
+      quotedText: quotedText,
+    };
+
+    var localReason = evaluateLocalQuality(meta);
+    if (localReason) {
+      rememberQualityDecision(displayId, "hide");
+      if (stats) stats.localHidden.push("@" + (handle || "?") + "(" + localReason + ")");
+      return;
+    }
+
+    if (mode === "ai" && !qualityQueuedById[displayId]) {
+      qualityQueuedById[displayId] = true;
+      batch.push(meta);
+    }
+  }
+
+  function dispatchQualityAiBatches(items, stats) {
+    var list = items || [];
+    var mode = qualityFilterMode();
+    var hasLocalOnly = !list.length && stats && stats.localHidden && stats.localHidden.length;
+    if (!list.length && !hasLocalOnly) return;
+    var totalChunks = list.length ? Math.ceil(list.length / QUALITY_BATCH_MAX) : 1;
+    for (var c = 0; c < totalChunks; c++) {
+      var chunk = list.length ? list.slice(c * QUALITY_BATCH_MAX, (c + 1) * QUALITY_BATCH_MAX) : [];
+      var payload = {
+        posts: chunk,
+        mode: mode,
+        localHidden: c === 0 && stats ? stats.localHidden : [],
+        followedExempt: c === 0 && stats ? stats.followedExempt : 0,
+      };
+      var sent = false;
+      try {
+        if (
+          window.webkit &&
+          window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.robinFeedFilter
+        ) {
+          window.webkit.messageHandlers.robinFeedFilter.postMessage(payload);
+          sent = true;
+        }
+      } catch (e) {}
+      if (!sent) {
+        try {
+          if (
+            window.RobinFeedFilter &&
+            typeof window.RobinFeedFilter.classifyBatch === "function"
+          ) {
+            window.RobinFeedFilter.classifyBatch(JSON.stringify(payload));
+          }
+        } catch (e2) {}
+      }
+    }
+  }
 
   var lastRawSettings = null;
   var cachedSettings = Object.assign({}, defaults);
@@ -892,13 +1187,133 @@
     var hide =
       el.getAttribute("data-mt-robin-hide") === "1" ||
       el.getAttribute("data-mt-keyword-hide") === "1" ||
-      el.getAttribute("data-mt-language-hide") === "1";
+      el.getAttribute("data-mt-language-hide") === "1" ||
+      el.getAttribute("data-mt-quality-hide") === "1";
     if (hide) {
       el.style.setProperty("display", "none", "important");
     } else {
       el.style.removeProperty("display");
     }
   }
+
+  function unmarkQualityHide(el) {
+    if (!el || !el.removeAttribute) return;
+    if (el.getAttribute("data-mt-quality-hide") !== "1") return;
+    el.removeAttribute("data-mt-quality-hide");
+    updateCellHideDisplay(el);
+  }
+
+  function markQualityHide(el) {
+    if (!el) return;
+    el.setAttribute("data-mt-quality-hide", "1");
+    updateCellHideDisplay(el);
+  }
+
+  function statusIdFromCell(cell) {
+    if (!cell) return "";
+    var article =
+      cell.matches && cell.matches('article[data-testid="tweet"]')
+        ? cell
+        : cell.querySelector && cell.querySelector('article[data-testid="tweet"]');
+    if (!article) return "";
+    return statusIdFromArticle(article);
+  }
+
+  function handleFromCell(cell) {
+    if (!cell || !cell.querySelector) return "";
+    var article =
+      cell.matches && cell.matches('article[data-testid="tweet"]')
+        ? cell
+        : cell.querySelector('article[data-testid="tweet"]');
+    if (!article || !article.querySelector) return "";
+    var link = article.querySelector('a[href*="/status/"]');
+    if (!link) return "";
+    var m = /^\/([A-Za-z0-9_]+)\/status\/\d+/.exec(link.getAttribute("href") || "");
+    return m ? m[1].toLowerCase() : "";
+  }
+
+  function cellIsAboveViewport(cell) {
+    if (!cell || typeof cell.getBoundingClientRect !== "function") return false;
+    try {
+      var rect = cell.getBoundingClientRect();
+      return rect && typeof rect.bottom === "number" && rect.bottom < 0;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isQualityFeedActive(settings) {
+    if (!isHomePath()) return false;
+    if (!window.__ROBIN_QUALITY_FEED_ACTIVE__) return false;
+    return qualityFilterMode(settings) !== "off";
+  }
+
+  function shouldQualityHideCell(cell, settings) {
+    if (!isQualityFeedActive(settings)) return false;
+    if (cellIsFocalStatus(cell)) return false;
+    var id = statusIdFromCell(cell);
+    if (id) {
+      var verdict = qualityDecisionById[id];
+      if (verdict === "keep") return false;
+      if (verdict === "hide") return true;
+    }
+    var handle = handleFromCell(cell);
+    if (handle && qualityHiddenHandles[handle]) return true;
+    return false;
+  }
+
+  function hideQualityPosts(root, protectScroll) {
+    var settings = currentSettings();
+    var scope = root && root.querySelectorAll ? root : document;
+    var active = isQualityFeedActive(settings);
+    if (!active) {
+      if (scope.getAttribute && scope.getAttribute("data-mt-quality-hide") === "1") {
+        unmarkQualityHide(scope);
+      }
+      var hidden = scope.querySelectorAll
+        ? scope.querySelectorAll("[data-mt-quality-hide]")
+        : [];
+      for (var h = 0; h < hidden.length; h++) unmarkQualityHide(hidden[h]);
+      return;
+    }
+    var cells;
+    if (scope.getAttribute && scope.getAttribute("data-testid") === "cellInnerDiv") {
+      cells = [scope];
+    } else {
+      cells = scope.querySelectorAll('[data-testid="cellInnerDiv"]');
+    }
+    for (var i = 0; i < cells.length; i++) {
+      var cell = cells[i];
+      if (shouldQualityHideCell(cell, settings)) {
+        if (protectScroll && cellIsAboveViewport(cell)) continue;
+        markQualityHide(cell);
+      } else {
+        unmarkQualityHide(cell);
+      }
+    }
+  }
+
+  window.__ROBIN_APPLY_FEED_FILTER__ = function (rawPayload) {
+    try {
+      var payload =
+        typeof rawPayload === "string" ? JSON.parse(rawPayload) : rawPayload;
+      if (!payload || typeof payload !== "object") return;
+      var keptIds = payload.keptIds || [];
+      for (var k = 0; k < keptIds.length; k++) {
+        if (keptIds[k]) rememberQualityDecision(String(keptIds[k]), "keep");
+      }
+      var hidden = payload.hidden || [];
+      for (var i = 0; i < hidden.length; i++) {
+        var item = hidden[i];
+        if (!item) continue;
+        if (item.id) rememberQualityDecision(String(item.id), "hide");
+        if (item.accountWide && item.handle) {
+          qualityHiddenHandles[String(item.handle).toLowerCase()] = true;
+        }
+      }
+      hideQualityPosts(document, true);
+    } catch (e) {}
+  };
 
   function unmarkKeywordHide(el) {
     if (!el || !el.removeAttribute) return;
@@ -2516,10 +2931,19 @@
     if (cellIsFocalStatus(cell)) {
       unmarkKeywordHide(cell);
       unmarkLanguageHide(cell);
+      unmarkQualityHide(cell);
       return;
     }
 
     var settings = currentSettings();
+
+    // 1b. For You quality filter (Tier 0 cache + Tier 1 heuristics + Tier 2 AI verdicts)
+    if (shouldQualityHideCell(cell, settings)) {
+      markQualityHide(cell);
+      return;
+    } else {
+      unmarkQualityHide(cell);
+    }
 
     // 2. Social context (repost time)
     if (settings.preferLatest && isHomePath() && hasRepostTimes) {
@@ -2653,6 +3077,7 @@
           hideLiveContentBlocks(n);
           hideKeywordPosts(n);
           hideLanguagePosts(n);
+          hideQualityPosts(n, false);
         }
       }
       if (work.length > limit) {

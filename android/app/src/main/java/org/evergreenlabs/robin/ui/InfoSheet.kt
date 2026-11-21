@@ -64,6 +64,7 @@ import org.evergreenlabs.robin.R
 import org.evergreenlabs.robin.services.FeedRefreshIntervalStore
 import org.evergreenlabs.robin.services.FontScaleStore
 import org.evergreenlabs.robin.xfilter.FilterSettings
+import org.evergreenlabs.robin.xfilter.ForYouQualityFilterMode
 import org.evergreenlabs.robin.xfilter.HomeFeedMode
 
 /**
@@ -393,6 +394,65 @@ private fun HomeFeedSection(onDismiss: () -> Unit = {}) {
                 }
             }
         }
+    }
+
+    if (settings.homeFeedMode == HomeFeedMode.ForYou || !settings.hidePageHeader) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.filter_quality_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .selectableGroup(),
+            ) {
+                ForYouQualityFilterMode.entries.forEach { qMode ->
+                    val selected = settings.forYouQualityFilter == qMode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = SettingsRowMinHeight)
+                            .selectable(
+                                selected = selected,
+                                onClick = {
+                                    if (settings.forYouQualityFilter != qMode) {
+                                        scope.launch {
+                                            store.update { it.copy(forYouQualityFilter = qMode) }
+                                        }
+                                    }
+                                },
+                                role = Role.RadioButton,
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = selected,
+                            onClick = null,
+                        )
+                        Text(
+                            text = stringResource(qMode.labelRes),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.filter_quality_footer),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

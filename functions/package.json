@@ -1,0 +1,13 @@
+{
+  "name": "robin-functions",
+  "description": "Stateless App-Check-protected Firebase Cloud Functions for Robin",
+  "private": true,
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  }
+}

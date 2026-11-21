@@ -31,6 +31,11 @@
     <string name="filter_home_timeline">Home Feed</string>
     <string name="filter_home_following_time">Following (by time)</string>
     <string name="filter_home_for_you">For You</string>
+    <string name="filter_quality_title">Filter Low-Quality Posts</string>
+    <string name="filter_quality_off">Off</string>
+    <string name="filter_quality_local">Fast (Local)</string>
+    <string name="filter_quality_ai">Smart (AI)</string>
+    <string name="filter_quality_footer">Hides non-human aggregators, engagement bait, AI slop, and useless comments on For You and category tabs. Following and followed accounts are never hidden.</string>
     <string name="filter_hide_page_header">Hide X page header</string>
     <string name="filter_force_following">Force Following tab</string>
     <string name="filter_hide_for_you">Hide For You tab</string>

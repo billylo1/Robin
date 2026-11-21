@@ -19,6 +19,7 @@
 		3D3E3C51C2C69DAC54B0C864 /* FilterSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8CA8F1B419AE854F52735B9 /* FilterSettings.swift */; };
 		3DEC86FC9CA6D15037832DD8 /* Aptabase in Frameworks */ = {isa = PBXBuildFile; productRef = FC3BD1272CFA4CAE2B8484CA /* Aptabase */; };
 		4EF3D8A6203B361B3B274174 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 085F0DD1E0B83BDAD26B9ED5 /* RootView.swift */; };
+		589451DCEAC8E4238C1BBEA3 /* FeedQualityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B933C1F343BE54FC7BC50E32 /* FeedQualityService.swift */; };
 		5AEA871B0B5391D42FB53441 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 16669C47865736CA9B5F3216 /* Assets.xcassets */; };
 		5D91EBCA6116C82654209223 /* FirebaseBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44157EE7A096BBAD2B20257D /* FirebaseBootstrap.swift */; };
 		68D2DBA83EDAF729DE20F8B7 /* FontScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0046520D77B03375F4B14BAA /* FontScale.swift */; };
@@ -53,6 +54,7 @@
 		5BE7893946000DB805920BB6 /* RobinRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RobinRelease.entitlements; sourceTree = "<group>"; };
 		91B70D49F5E425FA5282F0B7 /* InfoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InfoSheet.swift; sourceTree = "<group>"; };
 		B8CA8F1B419AE854F52735B9 /* FilterSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilterSettings.swift; sourceTree = "<group>"; };
+		B933C1F343BE54FC7BC50E32 /* FeedQualityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedQualityService.swift; sourceTree = "<group>"; };
 		BA9ACBC7058B4C8B4B67C69B /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		BCBC59B87472AA779E0BD3E9 /* SourceCredibilityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceCredibilityService.swift; sourceTree = "<group>"; };
 		C5EC5E40723A5184B83DE4CD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -63,7 +65,7 @@
 		E7DCF4F26AAD3D386F5BCCD7 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		F3E22E8D646E250837757F79 /* Robin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Robin.entitlements; sourceTree = "<group>"; };
 		FB76E59A7154998AEA2DEA8E /* Robin.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_443CA16D-2464-4D2D-A97A-1E14325028B2" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		"TEMP_C6B79127-A152-4B4E-BC54-453AC2FB8F79" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,6 +96,7 @@
 			isa = PBXGroup;
 			children = (
 				2338E8D46A6EFC450540C436 /* AppChrome.swift */,
+				B933C1F343BE54FC7BC50E32 /* FeedQualityService.swift */,
 				44157EE7A096BBAD2B20257D /* FirebaseBootstrap.swift */,
 				214F0C2C4EE9348738CDE6C6 /* GenerativeAIService.swift */,
 				BCBC59B87472AA779E0BD3E9 /* SourceCredibilityService.swift */,
@@ -178,10 +181,10 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		"TEMP_599A9254-6E0E-425F-B10A-C602656DDC89" /* ios */ = {
+		"TEMP_9E571025-1E86-4C2C-AF50-AECA7EB370B1" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_443CA16D-2464-4D2D-A97A-1E14325028B2" /* Config.xcconfig */,
+				"TEMP_C6B79127-A152-4B4E-BC54-453AC2FB8F79" /* Config.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -277,6 +280,7 @@
 				1A25D1397E571963E986BD1D /* AppDelegate.swift in Sources */,
 				C5A9B964F11F570EB7A44212 /* FactCheckResultSheet.swift in Sources */,
 				A5DC6712F9D5226E17298E33 /* FactCheckSettings.swift in Sources */,
+				589451DCEAC8E4238C1BBEA3 /* FeedQualityService.swift in Sources */,
 				2B28B9B12BA507FA5A261AFC /* FeedRefreshInterval.swift in Sources */,
 				3D3E3C51C2C69DAC54B0C864 /* FilterSettings.swift in Sources */,
 				21AF53957E8BD976EBDCAA0A /* FilterSettingsStore.swift in Sources */,
@@ -303,7 +307,7 @@
 				CODE_SIGN_ENTITLEMENTS = Robin/Robin.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 74;
+				CURRENT_PROJECT_VERSION = 75;
 				DEVELOPMENT_TEAM = X5J5T5UT6J;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Robin/Info.plist;
@@ -311,7 +315,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.35;
+				MARKETING_VERSION = 0.2.36;
 				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = org.evergreenlabs.robin;
 				PRODUCT_NAME = Robin;
@@ -329,7 +333,7 @@
 				CODE_SIGN_ENTITLEMENTS = Robin/RobinRelease.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 74;
+				CURRENT_PROJECT_VERSION = 75;
 				DEVELOPMENT_TEAM = X5J5T5UT6J;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Robin/Info.plist;
@@ -337,7 +341,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.35;
+				MARKETING_VERSION = 0.2.36;
 				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = org.evergreenlabs.robin;
 				PRODUCT_NAME = Robin;
@@ -349,7 +353,7 @@
 		};
 		C47C3DAB46D9040153520C7E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_443CA16D-2464-4D2D-A97A-1E14325028B2" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_C6B79127-A152-4B4E-BC54-453AC2FB8F79" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -407,7 +411,7 @@
 		};
 		D80246C00E14E3392654CD99 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_443CA16D-2464-4D2D-A97A-1E14325028B2" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_C6B79127-A152-4B4E-BC54-453AC2FB8F79" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

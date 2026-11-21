@@ -9,6 +9,19 @@ enum class HomeFeedMode(val labelRes: Int) {
     ForYou(R.string.filter_home_for_you),
 }
 
+/** Quality filter mode for the algorithmic "For You" feed. */
+enum class ForYouQualityFilterMode(val wireValue: String, val labelRes: Int) {
+    Off("off", R.string.filter_quality_off),
+    Local("local", R.string.filter_quality_local),
+    AI("ai", R.string.filter_quality_ai),
+    ;
+
+    companion object {
+        fun fromWireValue(raw: String?): ForYouQualityFilterMode =
+            entries.firstOrNull { it.wireValue == raw } ?: AI
+    }
+}
+
 /**
  * Defaults for the injected x-filter core (no chrome.storage).
  * Host serializes these onto window.__ROBIN_SETTINGS__ before filter-core.js.
@@ -29,6 +42,8 @@ data class FilterSettings(
     val hideKeywords: List<String> = emptyList(),
     /** Allowed post languages (e.g. ["en", "zh"]). Empty allows all languages. */
     val allowedLanguages: List<String> = emptyList(),
+    /** Hide non-human / aggregator / engagement-bait / useless posts on For You. */
+    val forYouQualityFilter: ForYouQualityFilterMode = ForYouQualityFilterMode.AI,
 ) {
     /** Home feed mode for Settings UI (default: Following by time). */
     val homeFeedMode: HomeFeedMode
@@ -72,6 +87,7 @@ data class FilterSettings(
             append(jsonStringLiteral(code))
         }
         append("],")
+        append("\"forYouQualityFilter\":").append(jsonStringLiteral(forYouQualityFilter.wireValue)).append(',')
         append("\"fontScale\":").append(fontScale)
         append('}')
     }

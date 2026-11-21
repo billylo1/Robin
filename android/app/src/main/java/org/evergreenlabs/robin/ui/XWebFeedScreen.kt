@@ -272,6 +272,31 @@ private class BootBridge(
     }
 }
 
+private class FeedQualityBridge(
+    private val context: Context,
+    private val scope: kotlinx.coroutines.CoroutineScope,
+    private val isAiEnabled: () -> Boolean,
+    private val getWebView: () -> WebView?,
+) {
+    private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun classifyBatch(jsonStr: String) {
+        if (!isAiEnabled()) return
+        scope.launch {
+            val resultJson = org.evergreenlabs.robin.firebase.FeedQualityService
+                .classifyRawBatch(context, jsonStr) ?: return@launch
+            main.post {
+                val wv = getWebView() ?: return@post
+                wv.evaluateJavascript(
+                    "window.__ROBIN_APPLY_FEED_FILTER__ && window.__ROBIN_APPLY_FEED_FILTER__($resultJson);",
+                    null,
+                )
+            }
+        }
+    }
+}
+
 private class FactCheckBridge(
     private val onFactCheck: (FactCheckRequest) -> Unit,
 ) {
@@ -1372,6 +1397,18 @@ fun XWebFeedScreen(
                     addJavascriptInterface(
                         SentryBridge(),
                         "RobinSentry",
+                    )
+                    addJavascriptInterface(
+                        FeedQualityBridge(
+                            context = context.applicationContext,
+                            scope = scope,
+                            isAiEnabled = {
+                                liveFilterSettings.value.forYouQualityFilter ==
+                                    org.evergreenlabs.robin.xfilter.ForYouQualityFilterMode.AI
+                            },
+                            getWebView = { webViewRef },
+                        ),
+                        "RobinFeedFilter",
                     )
 
                     webChromeClient = object : WebChromeClient() {

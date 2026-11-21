@@ -27,6 +27,7 @@ class FilterSettingsStore(private val context: Context) {
         val hidePageHeader = booleanPreferencesKey("hidePageHeader")
         val hideKeywords = stringPreferencesKey("hideKeywords")
         val allowedLanguages = stringPreferencesKey("allowedLanguages")
+        val forYouQualityFilter = stringPreferencesKey("forYouQualityFilter")
     }
 
     val settings: Flow<FilterSettings> = context.filterSettingsDataStore.data.map { prefs ->
@@ -46,6 +47,7 @@ class FilterSettingsStore(private val context: Context) {
             prefs[Keys.hidePageHeader] = next.hidePageHeader
             prefs[Keys.hideKeywords] = JSONArray(next.hideKeywords).toString()
             prefs[Keys.allowedLanguages] = JSONArray(next.allowedLanguages).toString()
+            prefs[Keys.forYouQualityFilter] = next.forYouQualityFilter.wireValue
             prefs.remove(booleanPreferencesKey("hideComposeButton"))
         }
     }
@@ -63,6 +65,7 @@ class FilterSettingsStore(private val context: Context) {
             hidePageHeader = this[Keys.hidePageHeader] ?: d.hidePageHeader,
             hideKeywords = FilterSettings.normalizedKeywords(decodeStringArray(this[Keys.hideKeywords])),
             allowedLanguages = FilterSettings.normalizedLanguages(decodeStringArray(this[Keys.allowedLanguages])),
+            forYouQualityFilter = ForYouQualityFilterMode.fromWireValue(this[Keys.forYouQualityFilter]),
         )
     }
 
