@@ -123,7 +123,8 @@
   function collectHomeTimelineData(op, text) {
     try {
       var isFollowingOp = op === "HomeLatestTimeline";
-      window.__ROBIN_QUALITY_FEED_ACTIVE__ = !isFollowingOp;
+      var onQualityPath = isQualityFeedPath();
+      window.__ROBIN_QUALITY_FEED_ACTIVE__ = !isFollowingOp && onQualityPath;
       var ins = extractTimelineInstructions(JSON.parse(text));
       var batch = [];
       var stats = { localHidden: [], followedExempt: 0 };
@@ -133,18 +134,18 @@
           var c = es[k].content || {};
           if (c.itemContent) {
             if (isFollowingOp || op === "HomeTimeline") collectRepost(c.itemContent);
-            if (!isFollowingOp) collectQualityCandidate(c.itemContent, batch, stats);
+            if (!isFollowingOp && onQualityPath) collectQualityCandidate(c.itemContent, batch, stats);
           }
           var items = c.items || [];
           for (var n = 0; n < items.length; n++) {
             var ic = items[n].item && items[n].item.itemContent;
             if (!ic) continue;
             if (isFollowingOp || op === "HomeTimeline") collectRepost(ic);
-            if (!isFollowingOp) collectQualityCandidate(ic, batch, stats);
+            if (!isFollowingOp && onQualityPath) collectQualityCandidate(ic, batch, stats);
           }
         }
       }
-      if (!isFollowingOp) {
+      if (!isFollowingOp && onQualityPath) {
         if (batch.length || stats.localHidden.length) {
           dispatchQualityAiBatches(batch, stats);
         }
@@ -229,7 +230,7 @@
 
   var RE_QUALITY_ATTRIBUTION = /(?:^|\s)(?:by|via|cc|credit:?|h\/t)\s+@\w+/i;
   var RE_QUALITY_BAIT_CTA =
-    /\b(?:comment|reply)\s+["'“”]?[a-z0-9]{1,20}["'“”]?\s+(?:and\s+i(?:'|’)?ll|to\s+get|for\s+(?:the\s+)?(?:link|dm|guide|access))|\b(?:like|rt|retweet)\s*\+\s*(?:rt|retweet|follow)|\bwrong\s+answers\s+only\b/i;
+    /\b(?:comment|reply)\s+["'“”]?[a-z0-9]{1,20}["'“”]?\s+(?:and\s+i(?:'|’)?ll|to\s+get|for\s+(?:the\s+)?(?:link|dm|guide|access))|\b(?:like|rt|retweet)\s*\+\s*(?:rt|retweet|follow)|\bwrong\s+answers\s+only\b|\bdrop\s+a\s+(?:[\u2600-\u27bf]|[\ud83c-\ud83e][\udc00-\udfff])/i;
   var RE_QUALITY_USELESS_SHORT =
     /^(?:this\.?|facts\.?|100%|true\.?|so true\.?|real\.?|agreed\.?|agree\??|lfg!?|wow!?|insane!?|crazy!?|huge if true\.?|based\.?|same\.?|yes\.?|no\.?|exact(?:ly)?\.?|[\s!?.,\u2600-\u27bf\ud83c-\ud83e\udc00-\udfff]+)$/i;
   var RE_QUALITY_BOT_BIO =
@@ -260,19 +261,76 @@
     return s.replace(/\s+/g, " ").trim().slice(0, maxLen);
   }
 
-  function evaluateLocalQuality(meta) {
+  function qualitySampleText(s, maxLen, headLen, tailLen) {
+    if (typeof s !== "string") return "";
+    var clean = s.replace(/\s+/g, " ").trim();
+    if (clean.length <= maxLen) return clean;
+    var head = clean.slice(0, headLen).replace(/\s+$/, "");
+    var tail = clean.slice(clean.length - tailLen).replace(/^\s+/, "");
+    return head + " [...] " + tail;
+  }
+
+  function countRegexMatches(s, re) {
+    if (typeof s !== "string" || !s) return 0;
+    var m = s.match(re);
+    return m ? m.length : 0;
+  }
+
+  function countBodyMentions(rawText, isReply) {
+    if (typeof rawText !== "string" || !rawText) return 0;
+    var body = isReply ? rawText.replace(/^(?:@[A-Za-z0-9_]{1,15}\s+)+/, "") : rawText;
+    return countRegexMatches(body, /(?:^|\s)@[A-Za-z0-9_]{1,15}\b/g);
+  }
+
+  function extractUrlDomains(urlsArr) {
+    if (!urlsArr || !urlsArr.length) return [];
+    var excluded = {
+      "t.co": 1,
+      "x.com": 1,
+      "twitter.com": 1,
+      "pic.twitter.com": 1,
+      "pic.x.com": 1,
+    };
+    var seen = {};
+    var out = [];
+    for (var i = 0; i < urlsArr.length && out.length < 3; i++) {
+      var u = urlsArr[i] && (urlsArr[i].expanded_url || urlsArr[i].unwound_url || urlsArr[i].url);
+      if (!u || typeof u !== "string") continue;
+      var host = "";
+      try {
+        host = new URL(u).hostname || "";
+      } catch (e) {
+        var hm = /^https?:\/\/([^\/:?#]+)/i.exec(u);
+        host = hm ? hm[1] : "";
+      }
+      host = host.toLowerCase().replace(/^www\./, "").slice(0, 60);
+      if (!host || excluded[host] || seen[host]) continue;
+      seen[host] = true;
+      out.push(host);
+    }
+    return out;
+  }
+
+  function evaluateLocalQuality(meta, rawText) {
     if (!meta || meta.following) return "";
-    var text = meta.text || "";
+    var text = typeof rawText === "string" ? rawText : meta.text || "";
     var hashtags = meta.hashtagCount || 0;
-    if (hashtags >= 7) return "hashtag_spam";
+    var nonHashtagLen = text
+      .replace(/#[A-Za-z0-9_]+/g, "")
+      .replace(/https?:\/\/\S+/g, "")
+      .replace(/\s+/g, " ")
+      .trim().length;
+    if (hashtags >= 7 && nonHashtagLen < 350) return "hashtag_spam";
+    if (!meta.isReply && (meta.mentionCount || 0) >= 8) return "mention_pod_spam";
     if (hashtags >= 4 && RE_QUALITY_ATTRIBUTION.test(text)) return "aggregator_attribution";
     if (RE_QUALITY_BAIT_CTA.test(text)) return "engagement_bait_cta";
+    var trimmed = text.trim();
     if (
       !meta.hasMedia &&
       !meta.hasUrls &&
-      text.length > 0 &&
-      text.length <= 28 &&
-      RE_QUALITY_USELESS_SHORT.test(text)
+      trimmed.length > 0 &&
+      trimmed.length <= 28 &&
+      RE_QUALITY_USELESS_SHORT.test(trimmed)
     ) {
       return "useless_short";
     }
@@ -331,34 +389,37 @@
     if (qualityDecisionById[displayId]) return;
 
     var srcLegacy = source.legacy || {};
-    var noteText =
+    var noteRes =
       source.note_tweet &&
       source.note_tweet.note_tweet_results &&
-      source.note_tweet.note_tweet_results.result &&
-      source.note_tweet.note_tweet_results.result.text;
-    var text = qualityClampStr(noteText || srcLegacy.full_text || "", 400);
+      source.note_tweet.note_tweet_results.result;
+    var rawText = String((noteRes && noteRes.text) || srcLegacy.full_text || "").trim();
+    var text = qualitySampleText(rawText, 460, 290, 160);
     var quoted = unwrapTweet(
       source.quoted_status_result && source.quoted_status_result.result
     );
-    var quotedText = quoted
-      ? qualityClampStr(
-          (quoted.note_tweet &&
-            quoted.note_tweet.note_tweet_results &&
-            quoted.note_tweet.note_tweet_results.result &&
-            quoted.note_tweet.note_tweet_results.result.text) ||
-            (quoted.legacy && quoted.legacy.full_text) ||
-            "",
-          160
-        )
+    var qNoteRes =
+      quoted &&
+      quoted.note_tweet &&
+      quoted.note_tweet.note_tweet_results &&
+      quoted.note_tweet.note_tweet_results.result;
+    var rawQuotedText = quoted
+      ? String((qNoteRes && qNoteRes.text) || (quoted.legacy && quoted.legacy.full_text) || "").trim()
       : "";
-    if (!text && !quotedText) return;
+    var quotedText = rawQuotedText ? qualitySampleText(rawQuotedText, 180, 110, 60) : "";
+    if (!rawText && !rawQuotedText) return;
 
-    var entities = srcLegacy.entities || {};
-    var hashtagsArr = entities.hashtags || [];
-    var urlsArr = entities.urls || [];
+    var legacyEntities = srcLegacy.entities || {};
+    var noteEntities = (noteRes && noteRes.entity_set) || {};
+    var hashtagsArr =
+      noteEntities.hashtags &&
+      noteEntities.hashtags.length >= (legacyEntities.hashtags ? legacyEntities.hashtags.length : 0)
+        ? noteEntities.hashtags
+        : legacyEntities.hashtags || [];
+    var urlsArr = (noteEntities.urls || []).concat(legacyEntities.urls || []);
     var mediaArr =
       (srcLegacy.extended_entities && srcLegacy.extended_entities.media) ||
-      entities.media ||
+      legacyEntities.media ||
       [];
     var bio = qualityClampStr(
       (sourceUser.profile_bio && sourceUser.profile_bio.description) ||
@@ -372,6 +433,29 @@
         "",
       80
     );
+    var isReply = Boolean(srcLegacy.in_reply_to_status_id_str);
+    var hashtagCount = Math.max(
+      hashtagsArr.length,
+      countRegexMatches(rawText, /(?:^|\s)#[A-Za-z0-9_]+/g)
+    );
+    var mentionCount = countBodyMentions(rawText, isReply);
+    var urlDomains = extractUrlDomains(urlsArr);
+
+    var accountAgeDays = null;
+    var statusesPerDay = null;
+    var userCreatedAt =
+      (sourceUser.core && sourceUser.core.created_at) ||
+      (sourceUser.legacy && sourceUser.legacy.created_at);
+    if (userCreatedAt) {
+      var createdMs = Date.parse(userCreatedAt);
+      if (!isNaN(createdMs)) {
+        var ageDays = Math.max(1, Math.floor((Date.now() - createdMs) / 86400000));
+        accountAgeDays = ageDays;
+        if (sourceUser.legacy && typeof sourceUser.legacy.statuses_count === "number") {
+          statusesPerDay = Math.round((sourceUser.legacy.statuses_count / ageDays) * 10) / 10;
+        }
+      }
+    }
 
     var meta = {
       id: displayId,
@@ -388,17 +472,22 @@
         sourceUser.legacy && typeof sourceUser.legacy.friends_count === "number"
           ? sourceUser.legacy.friends_count
           : null,
-      isReply: Boolean(srcLegacy.in_reply_to_status_id_str),
+      isReply: isReply,
       isRetweet: Boolean(rt),
       isQuote: Boolean(quoted),
       hasMedia: Boolean(mediaArr.length),
       hasUrls: Boolean(urlsArr.length),
-      hashtagCount: hashtagsArr.length,
+      hashtagCount: hashtagCount,
+      mentionCount: mentionCount,
+      charCount: rawText.length,
+      urlDomains: urlDomains,
+      statusesPerDay: statusesPerDay,
+      accountAgeDays: accountAgeDays,
       text: text,
       quotedText: quotedText,
     };
 
-    var localReason = evaluateLocalQuality(meta);
+    var localReason = evaluateLocalQuality(meta, rawText);
     if (localReason) {
       rememberQualityDecision(displayId, "hide");
       if (stats) stats.localHidden.push("@" + (handle || "?") + "(" + localReason + ")");
@@ -514,6 +603,12 @@
   function isHomePath() {
     var p = location.pathname || "";
     return p === "/" || p === "/home" || p.indexOf("/home") === 0;
+  }
+
+  function isQualityFeedPath() {
+    if (isHomePath()) return true;
+    var p = location.pathname || "";
+    return /^\/i\/(?:lists|communities|topics)(?:\/|$)/.test(p);
   }
 
   /** Track home so leave-home can undo sticky inline display:none. */
@@ -694,10 +789,7 @@
     return !!tab;
   }
 
-  function isFollowingFeedActive() {
-    if (!isHomePath()) return false;
-
-    // Check all selected tabs in the home tablist or header
+  function selectedHomeTabKind() {
     var selectedTabs = document.querySelectorAll(
       "div[data-testid='ScrollSnap-List'][role='tablist'] [role='tab'][aria-selected='true'], " +
       "div[role='tablist'] [role='tab'][aria-selected='true'], " +
@@ -707,11 +799,23 @@
       for (var i = 0; i < selectedTabs.length; i++) {
         var label = tabNodeLabel(selectedTabs[i]);
         if (isFollowingLabel(label)) {
-          return true;
+          return "following";
         }
       }
-      return false;
+      return "other";
     }
+
+    var tabs = findHomeTabs();
+    if (tabs.following && isTabSelected(tabs.following)) return "following";
+    if (tabs.forYou && isTabSelected(tabs.forYou)) return "other";
+    return "";
+  }
+
+  function isFollowingFeedActive() {
+    if (!isHomePath()) return false;
+
+    var kind = selectedHomeTabKind();
+    if (kind) return kind === "following";
 
     var tabs = findHomeTabs();
     if (tabs.following) {
@@ -1243,9 +1347,15 @@
   }
 
   function isQualityFeedActive(settings) {
-    if (!isHomePath()) return false;
-    if (!window.__ROBIN_QUALITY_FEED_ACTIVE__) return false;
-    return qualityFilterMode(settings) !== "off";
+    if (qualityFilterMode(settings) === "off") return false;
+    if (isHomePath()) {
+      var kind = selectedHomeTabKind();
+      if (kind === "following") return false;
+      if (kind === "other") return true;
+      return Boolean(window.__ROBIN_QUALITY_FEED_ACTIVE__);
+    }
+    if (isQualityFeedPath()) return Boolean(window.__ROBIN_QUALITY_FEED_ACTIVE__);
+    return false;
   }
 
   function shouldQualityHideCell(cell, settings) {
@@ -1298,6 +1408,10 @@
       var payload =
         typeof rawPayload === "string" ? JSON.parse(rawPayload) : rawPayload;
       if (!payload || typeof payload !== "object") return;
+      var retryIds = payload.retryIds || [];
+      for (var r = 0; r < retryIds.length; r++) {
+        if (retryIds[r]) delete qualityQueuedById[String(retryIds[r])];
+      }
       var keptIds = payload.keptIds || [];
       for (var k = 0; k < keptIds.length; k++) {
         if (keptIds[k]) rememberQualityDecision(String(keptIds[k]), "keep");
@@ -2031,8 +2145,18 @@
     if (!t || !isHomePath()) return;
     window.__ROBIN_USER_PICKED_TAB__ = Date.now();
     var label = tabNodeLabel(t);
-    if (!isFollowingLabel(label)) {
+    var followingPicked = isFollowingLabel(label);
+    window.__ROBIN_QUALITY_FEED_ACTIVE__ = !followingPicked;
+    if (!followingPicked) {
       removeCaughtUpMarker();
+    }
+    if (typeof hideQualityPosts === "function") {
+      hideQualityPosts(document, false);
+      setTimeout(function () {
+        if (typeof hideQualityPosts === "function") {
+          hideQualityPosts(document, false);
+        }
+      }, 60);
     }
   }
 

@@ -1,3 +1,4 @@
+Improved Smart (AI) quality filtering for For You, Lists, Communities, and Topics feeds with better long-post context, mention-spam detection, instant tab-switch updates, and 2-strike repeat-offender caching.
 Added Smart (AI) quality filtering for For You and category feeds to hide non-human aggregators, engagement bait, AI slop, and useless comments while keeping accounts you follow.
 Improved fact-checking citation accuracy: source links now come only from verified Google Search grounding, eliminating broken or fabricated URLs.
 Fact-checking now includes attached post images (such as screenshots and charts), including image-only posts.

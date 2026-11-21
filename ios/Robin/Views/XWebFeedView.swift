@@ -932,7 +932,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
 
             Task { [weak webView] in
                 let result = await FeedQualityService.shared.classifyBatch(posts)
-                guard !result.hidden.isEmpty || !result.keptIds.isEmpty,
+                guard !result.hidden.isEmpty || !result.keptIds.isEmpty || !result.retryIds.isEmpty,
                       let encoded = try? JSONEncoder().encode(result),
                       let jsonStr = String(data: encoded, encoding: .utf8) else { return }
                 await MainActor.run {

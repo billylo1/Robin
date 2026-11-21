@@ -16,24 +16,51 @@ const DECISIONS_ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/decisions";
 const MAX_POSTS_PER_BATCH = 20;
 const KEEP_PROB_HIDE_THRESHOLD = 0.35;
-const ACCOUNT_WIDE_THRESHOLD = 0.80;
+const ACCOUNT_WIDE_THRESHOLD = 0.85;
+const CATEGORY_KEEP_THRESHOLDS = {
+  non_human_aggregator: 0.35,
+  engagement_bait: 0.35,
+  ai_slop: 0.22,
+  useless_comment: 0.20,
+};
 
 const CATEGORY_CRITERIA = {
   keep:
-    "Original human author sharing firsthand thoughts, work, engineering demos, research, news analysis, personal stories, or substantive commentary.",
+    "Original human author sharing firsthand thoughts, work, engineering demos, research, paper/news analysis with real substance or sources, personal stories, or grounded commentary (including enthusiastic praise or questions when accompanied by real technical or domain substance).",
   non_human_aggregator:
-    "Content mill, automated news/clip repost farm, scraper ('by @...', 'via @...'), hashtag-stuffed repost account, or bot/parody account repackaging others' content.",
+    "Content mill, automated news/clip repost farm, scraper ('by @...', 'via @...'), high-volume repost/curated-clip account, or bot/parody account primarily repackaging others' content without original analysis.",
   engagement_bait:
-    "Clickbait or rage-bait hook, DM/comment/bookmark/follow farming ('Comment X and I'll DM', 'Wrong answers only', sensationalist viral hooks designed solely for clicks).",
+    "Clickbait or rage-bait hook, DM/comment/bookmark/follow farming ('Comment X and I'll DM', 'Wrong answers only', sensationalist viral hooks designed solely to farm clicks or outrage).",
   useless_comment:
-    "Zero-substance hype reply, empty quote-tweet, or filler reaction ('This.', '100%', 'Insane launch!', 'LFG', 'Huge if true') adding no real information or perspective.",
+    "Zero-substance hype reply, empty quote-tweet, or pure filler reaction ('This.', '100%', 'LFG', 'Huge if true') that adds no real information, domain context, or perspective.",
   ai_slop:
-    "Formulaic, obviously LLM-generated engagement copy or generic hustle/corporate platitudes lacking genuine human specificity.",
+    "Formulaic, obviously LLM-generated engagement copy, recycled LinkedIn-style hustle/corporate platitudes, or generic summary threads lacking genuine human voice or firsthand specificity.",
 };
 
 function clampText(value, maxLen) {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, maxLen);
+}
+
+function sampleText(value, maxLen, headLen, tailLen) {
+  if (typeof value !== "string") return "";
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length <= maxLen) return clean;
+  const head = clean.slice(0, headLen).trimEnd();
+  const tail = clean.slice(clean.length - tailLen).trimStart();
+  return `${head} [...] ${tail}`;
+}
+
+function sanitizeDomains(raw) {
+  if (!Array.isArray(raw)) return [];
+  const excluded = new Set(["t.co", "x.com", "twitter.com", "pic.twitter.com", "pic.x.com"]);
+  const out = [];
+  for (let i = 0; i < raw.length && out.length < 3; i++) {
+    const d = clampText(String(raw[i] || "").toLowerCase(), 60).replace(/^www\./, "");
+    if (!d || excluded.has(d) || out.includes(d)) continue;
+    out.push(d);
+  }
+  return out;
 }
 
 function sanitizePost(raw) {
@@ -53,8 +80,17 @@ function sanitizePost(raw) {
     isQuote: Boolean(raw.isQuote),
     hasMedia: Boolean(raw.hasMedia),
     hashtagCount: Number.isFinite(raw.hashtagCount) ? Math.max(0, Math.floor(raw.hashtagCount)) : 0,
-    text: clampText(String(raw.text || ""), 400),
-    quotedText: clampText(String(raw.quotedText || ""), 160),
+    mentionCount: Number.isFinite(raw.mentionCount) ? Math.max(0, Math.floor(raw.mentionCount)) : 0,
+    charCount: Number.isFinite(raw.charCount) ? Math.max(0, Math.floor(raw.charCount)) : null,
+    urlDomains: sanitizeDomains(raw.urlDomains),
+    statusesPerDay: Number.isFinite(raw.statusesPerDay)
+      ? Math.max(0, Math.round(raw.statusesPerDay * 10) / 10)
+      : null,
+    accountAgeDays: Number.isFinite(raw.accountAgeDays)
+      ? Math.max(0, Math.floor(raw.accountAgeDays))
+      : null,
+    text: sampleText(String(raw.text || ""), 460, 290, 160),
+    quotedText: sampleText(String(raw.quotedText || ""), 180, 110, 60),
   };
 }
 
@@ -77,8 +113,19 @@ function buildDecisionRequest(posts) {
     if (p.isQuote) flags.push("quote");
     if (p.hasMedia) flags.push("media");
     if (p.hashtagCount > 0) flags.push(`hashtags=${p.hashtagCount}`);
-    if (p.followers !== null) flags.push(`followers=${p.followers}`);
-    if (p.friends !== null) flags.push(`following=${p.friends}`);
+    if (p.mentionCount > 0) flags.push(`mentions=${p.mentionCount}`);
+    if (p.charCount !== null && p.charCount !== undefined) flags.push(`chars=${p.charCount}`);
+    if (p.followers !== null && p.followers !== undefined) flags.push(`followers=${p.followers}`);
+    if (p.friends !== null && p.friends !== undefined) flags.push(`following=${p.friends}`);
+    if (p.statusesPerDay !== null && p.statusesPerDay !== undefined) {
+      flags.push(`posts/day=${p.statusesPerDay}`);
+    }
+    if (p.accountAgeDays !== null && p.accountAgeDays !== undefined && p.accountAgeDays < 365) {
+      flags.push(`age=${p.accountAgeDays}d`);
+    }
+    if (Array.isArray(p.urlDomains) && p.urlDomains.length > 0) {
+      flags.push(`links=${p.urlDomains.join(",")}`);
+    }
 
     lines.push(`[${tag}] @${p.handle || "unknown"} (${p.name || ""}) [${flags.join(", ")}]`);
     if (p.bio) lines.push(`Bio: ${p.bio}`);
@@ -93,7 +140,7 @@ function buildDecisionRequest(posts) {
     };
     questions[`p${i}_account_wide`] = {
       type: "noul",
-      instructions: `Is the author of post [${tag}] (@${p.handle || "unknown"}) clearly a non-human account, automated bot, clip/news aggregator, or content-mill whose future posts should also be hidden?`,
+      instructions: `Is the author of post [${tag}] (@${p.handle || "unknown"}) clearly a non-human account, automated bot, viral clip/news aggregator, or repost content-mill (NOT an individual human author) whose future posts should always be hidden?`,
     };
   }
 
@@ -122,10 +169,17 @@ function parseDecisionVerdicts(posts, apiResponse) {
         : choice === "keep"
         ? 1
         : 0;
+    const threshold =
+      Object.prototype.hasOwnProperty.call(CATEGORY_KEEP_THRESHOLDS, choice)
+        ? CATEGORY_KEEP_THRESHOLDS[choice]
+        : 0.30;
 
-    if (choice && choice !== "keep" && keepProb < KEEP_PROB_HIDE_THRESHOLD) {
+    if (choice && choice !== "keep" && keepProb < threshold) {
       const accountWide = Boolean(
-        acct && typeof acct.noul === "number" && acct.noul >= ACCOUNT_WIDE_THRESHOLD
+        choice === "non_human_aggregator" &&
+          acct &&
+          typeof acct.noul === "number" &&
+          acct.noul >= ACCOUNT_WIDE_THRESHOLD
       );
       hidden.push({
         id: p.id,
@@ -225,6 +279,9 @@ exports._internal = {
   buildDecisionRequest,
   parseDecisionVerdicts,
   sanitizePost,
+  sampleText,
+  CATEGORY_CRITERIA,
+  CATEGORY_KEEP_THRESHOLDS,
   KEEP_PROB_HIDE_THRESHOLD,
   ACCOUNT_WIDE_THRESHOLD,
 };

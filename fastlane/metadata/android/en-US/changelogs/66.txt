@@ -1,0 +1,1 @@
+Improved Smart (AI) quality filtering for For You, Lists, Communities, and Topics feeds with better long-post context, mention-spam detection, instant tab-switch updates, and 2-strike repeat-offender caching.

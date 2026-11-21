@@ -33,6 +33,11 @@ data class FeedQualityPost(
     val isQuote: Boolean? = null,
     val hasMedia: Boolean? = null,
     val hashtagCount: Int? = null,
+    val mentionCount: Int? = null,
+    val charCount: Int? = null,
+    val urlDomains: List<String>? = null,
+    val statusesPerDay: Double? = null,
+    val accountAgeDays: Int? = null,
     val text: String? = null,
     val quotedText: String? = null,
 )
@@ -49,6 +54,7 @@ data class FeedQualityHiddenItem(
 data class FeedQualityBridgeResponse(
     val keptIds: List<String> = emptyList(),
     val hidden: List<FeedQualityHiddenItem> = emptyList(),
+    val retryIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -72,6 +78,13 @@ private data class CachedAuthorEntry(
     val expiresAtMs: Long,
 )
 
+@Serializable
+private data class CachedAuthorStrike(
+    val tweetIds: List<String>,
+    val reason: String,
+    val expiresAtMs: Long,
+)
+
 private data class CachedTweetVerdict(
     val hidden: FeedQualityHiddenItem?,
     val expiresAtMs: Long,
@@ -80,6 +93,7 @@ private data class CachedTweetVerdict(
 object FeedQualityService {
     private const val PREFS_NAME = "robin_feed_quality_cache"
     private const val KEY_AUTHOR_CACHE = "author_cache_v1"
+    private const val KEY_AUTHOR_STRIKES = "author_strikes_v1"
     private const val KEY_BUDGET_DATE = "budget_date_v1"
     private const val KEY_BUDGET_COUNT = "budget_count_v1"
 
@@ -90,6 +104,11 @@ object FeedQualityService {
     private const val DAILY_BATCH_LIMIT = 25
     private const val MAX_CONCURRENT_REQUESTS = 2
     private const val REQUEST_TIMEOUT_MS = 6000
+    private val STRIKE_PROMOTION_REASONS = setOf(
+        "non_human_aggregator",
+        "engagement_bait",
+        "ai_slop",
+    )
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -100,6 +119,7 @@ object FeedQualityService {
     private val mutex = Mutex()
     private val tweetCache = LinkedHashMap<String, CachedTweetVerdict>(128, 0.75f, false)
     private var authorCache: MutableMap<String, CachedAuthorEntry>? = null
+    private var authorStrikes: MutableMap<String, CachedAuthorStrike>? = null
     private val inFlightIds = HashSet<String>()
     private var activeRequests = 0
 
@@ -110,8 +130,21 @@ object FeedQualityService {
         if (incoming.posts.isEmpty()) return null
 
         val result = classifyBatch(context.applicationContext, incoming.posts)
-        if (result.hidden.isEmpty() && result.keptIds.isEmpty()) return null
+        if (result.hidden.isEmpty() && result.keptIds.isEmpty() && result.retryIds.isEmpty()) return null
         return runCatching { json.encodeToString(result) }.getOrNull()
+    }
+
+    suspend fun clearCaches(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        mutex.withLock {
+            tweetCache.clear()
+            authorCache?.clear()
+            authorStrikes?.clear()
+            prefs.edit()
+                .remove(KEY_AUTHOR_CACHE)
+                .remove(KEY_AUTHOR_STRIKES)
+                .apply()
+        }
     }
 
     suspend fun classifyBatch(
@@ -124,8 +157,9 @@ object FeedQualityService {
         val keptIds = ArrayList<String>()
         val uncached = ArrayList<FeedQualityPost>()
 
+        var budgetExhausted = false
         val shouldCallNetwork = mutex.withLock {
-            val authors = ensureAuthorCacheLoaded(prefs, nowMs)
+            val authors = ensureAuthorCacheLoadedLocked(prefs, nowMs)
             for (post in posts) {
                 val handleKey = post.handle.trim().lowercase(Locale.ROOT)
                 if (handleKey.isNotEmpty()) {
@@ -165,7 +199,10 @@ object FeedQualityService {
 
             if (uncached.isEmpty()) {
                 false
-            } else if (activeRequests >= MAX_CONCURRENT_REQUESTS || !consumeDailyBudgetIfAvailable(prefs, nowMs)) {
+            } else if (!hasDailyBudgetLocked(prefs, nowMs)) {
+                budgetExhausted = true
+                false
+            } else if (activeRequests >= MAX_CONCURRENT_REQUESTS) {
                 false
             } else {
                 activeRequests += 1
@@ -175,14 +212,27 @@ object FeedQualityService {
         }
 
         if (!shouldCallNetwork) {
-            return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden)
+            val retryIds = if (uncached.isNotEmpty() && !budgetExhausted) uncached.map { it.id } else emptyList()
+            return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden, retryIds = retryIds)
         }
 
+        val batchIds = uncached.map { it.id }
+        var retryIds: List<String> = emptyList()
         try {
-            val endpoint = endpointUrl() ?: return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden)
+            val endpoint = endpointUrl() ?: run {
+                retryIds = batchIds
+                return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden, retryIds = retryIds)
+            }
             val appCheckToken = runCatching {
                 FirebaseAppCheck.getInstance().getAppCheckToken(false).await().token
-            }.getOrNull() ?: return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden)
+            }.getOrNull() ?: run {
+                retryIds = batchIds
+                return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden, retryIds = retryIds)
+            }
+
+            mutex.withLock {
+                recordDailyBudgetUseLocked(prefs, nowMs)
+            }
 
             val responseBody = withContext(Dispatchers.IO) {
                 postJson(
@@ -190,30 +240,67 @@ object FeedQualityService {
                     appCheckToken = appCheckToken,
                     body = json.encodeToString(CloudFunctionRequest(posts = uncached)),
                 )
-            } ?: return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden)
+            } ?: run {
+                retryIds = batchIds
+                return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden, retryIds = retryIds)
+            }
 
             val decoded = runCatching {
                 json.decodeFromString<CloudFunctionResponse>(responseBody)
-            }.getOrNull() ?: return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden)
+            }.getOrNull() ?: run {
+                retryIds = batchIds
+                return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden, retryIds = retryIds)
+            }
 
             val remoteHidden = decoded.hidden.orEmpty()
             val hiddenById = HashMap<String, FeedQualityHiddenItem>(remoteHidden.size)
 
             mutex.withLock {
-                val authors = ensureAuthorCacheLoaded(prefs, nowMs)
+                val authors = ensureAuthorCacheLoadedLocked(prefs, nowMs)
+                val strikes = ensureAuthorStrikesLoadedLocked(prefs, nowMs)
                 var authorCacheDirty = false
-                for (item in remoteHidden) {
-                    hiddenById[item.id] = item
-                    hidden.add(item)
-                    val h = item.handle?.trim()?.lowercase(Locale.ROOT).orEmpty()
-                    if (item.accountWide && h.isNotEmpty()) {
+                var strikesDirty = false
+                val expiryMs = nowMs + AUTHOR_CACHE_TTL_MS
+
+                for (rawItem in remoteHidden) {
+                    var resolved = rawItem
+                    val h = rawItem.handle?.trim()?.lowercase(Locale.ROOT).orEmpty()
+
+                    if (rawItem.accountWide && h.isNotEmpty()) {
                         authors[h] = CachedAuthorEntry(
-                            reason = item.reason,
-                            expiresAtMs = nowMs + AUTHOR_CACHE_TTL_MS,
+                            reason = rawItem.reason,
+                            expiresAtMs = expiryMs,
                         )
+                        if (strikes.remove(h) != null) strikesDirty = true
                         authorCacheDirty = true
+                    } else if (h.isNotEmpty() && STRIKE_PROMOTION_REASONS.contains(rawItem.reason)) {
+                        val existing = strikes[h]?.takeIf { it.expiresAtMs > nowMs }
+                        val updatedIds = ArrayList<String>(existing?.tweetIds.orEmpty())
+                        if (!updatedIds.contains(rawItem.id)) {
+                            updatedIds.add(rawItem.id)
+                        }
+                        strikesDirty = true
+                        if (updatedIds.size >= 2) {
+                            authors[h] = CachedAuthorEntry(
+                                reason = rawItem.reason,
+                                expiresAtMs = expiryMs,
+                            )
+                            strikes.remove(h)
+                            authorCacheDirty = true
+                            resolved = rawItem.copy(accountWide = true)
+                        } else {
+                            strikes[h] = CachedAuthorStrike(
+                                tweetIds = updatedIds,
+                                reason = rawItem.reason,
+                                expiresAtMs = expiryMs,
+                            )
+                        }
                     }
+
+                    hiddenById[resolved.id] = resolved
+                    hidden.add(resolved)
                 }
+
                 for (post in uncached) {
                     val h = hiddenById[post.id]
                     if (h != null) {
@@ -223,12 +310,31 @@ object FeedQualityService {
                         rememberTweetLocked(post.id, null, nowMs)
                     }
                 }
+
                 if (authorCacheDirty) {
-                    pruneAndPersistAuthorCacheLocked(prefs, authors, nowMs)
+                    authorCache = pruneAndPersistLocked(
+                        prefs = prefs,
+                        key = KEY_AUTHOR_CACHE,
+                        entries = authors,
+                        nowMs = nowMs,
+                        expiresAt = { it.expiresAtMs },
+                        encode = { json.encodeToString(it) },
+                    )
+                }
+                if (strikesDirty) {
+                    authorStrikes = pruneAndPersistLocked(
+                        prefs = prefs,
+                        key = KEY_AUTHOR_STRIKES,
+                        entries = strikes,
+                        nowMs = nowMs,
+                        expiresAt = { it.expiresAtMs },
+                        encode = { json.encodeToString(it) },
+                    )
                 }
             }
         } catch (_: Exception) {
-            // Silent failure: never block or disturb the feed
+            // Silent failure: allow retry on later reload/scroll
+            retryIds = batchIds
         } finally {
             mutex.withLock {
                 activeRequests = (activeRequests - 1).coerceAtLeast(0)
@@ -236,7 +342,7 @@ object FeedQualityService {
             }
         }
 
-        return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden)
+        return FeedQualityBridgeResponse(keptIds = keptIds, hidden = hidden, retryIds = retryIds)
     }
 
     private fun rememberTweetLocked(id: String, hidden: FeedQualityHiddenItem?, nowMs: Long) {
@@ -250,60 +356,94 @@ object FeedQualityService {
         )
     }
 
-    private fun consumeDailyBudgetIfAvailable(prefs: SharedPreferences, nowMs: Long): Boolean {
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMs))
+    private fun todayString(nowMs: Long): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMs))
+
+    private fun hasDailyBudgetLocked(prefs: SharedPreferences, nowMs: Long): Boolean {
+        val today = todayString(nowMs)
         val storedDate = prefs.getString(KEY_BUDGET_DATE, null)
-        var count = prefs.getInt(KEY_BUDGET_COUNT, 0)
-        if (storedDate != today) {
-            count = 0
-        }
-        if (count >= DAILY_BATCH_LIMIT) return false
+        if (storedDate != today) return true
+        return prefs.getInt(KEY_BUDGET_COUNT, 0) < DAILY_BATCH_LIMIT
+    }
+
+    private fun recordDailyBudgetUseLocked(prefs: SharedPreferences, nowMs: Long) {
+        val today = todayString(nowMs)
+        val storedDate = prefs.getString(KEY_BUDGET_DATE, null)
+        val count = if (storedDate == today) prefs.getInt(KEY_BUDGET_COUNT, 0) else 0
         prefs.edit()
             .putString(KEY_BUDGET_DATE, today)
             .putInt(KEY_BUDGET_COUNT, count + 1)
             .apply()
-        return true
     }
 
-    private fun ensureAuthorCacheLoaded(
+    private fun ensureAuthorCacheLoadedLocked(
         prefs: SharedPreferences,
         nowMs: Long,
     ): MutableMap<String, CachedAuthorEntry> {
         authorCache?.let { return it }
-        val loaded = LinkedHashMap<String, CachedAuthorEntry>()
-        val raw = prefs.getString(KEY_AUTHOR_CACHE, null)
-        if (!raw.isNullOrBlank()) {
-            runCatching {
-                val map = json.decodeFromString<Map<String, CachedAuthorEntry>>(raw)
-                for ((k, v) in map) {
-                    if (v.expiresAtMs > nowMs) loaded[k] = v
-                }
-            }
+        val loaded = loadExpiringLocked(prefs, KEY_AUTHOR_CACHE, nowMs, expiresAt = { it.expiresAtMs }) { raw ->
+            json.decodeFromString<Map<String, CachedAuthorEntry>>(raw)
         }
         authorCache = loaded
         return loaded
     }
 
-    private fun pruneAndPersistAuthorCacheLocked(
+    private fun ensureAuthorStrikesLoadedLocked(
         prefs: SharedPreferences,
-        authors: MutableMap<String, CachedAuthorEntry>,
         nowMs: Long,
-    ) {
-        val iter = authors.entries.iterator()
-        while (iter.hasNext()) {
-            if (iter.next().value.expiresAtMs <= nowMs) iter.remove()
+    ): MutableMap<String, CachedAuthorStrike> {
+        authorStrikes?.let { return it }
+        val loaded = loadExpiringLocked(prefs, KEY_AUTHOR_STRIKES, nowMs, expiresAt = { it.expiresAtMs }) { raw ->
+            json.decodeFromString<Map<String, CachedAuthorStrike>>(raw)
         }
-        val trimmed: Map<String, CachedAuthorEntry> = if (authors.size > MAX_AUTHOR_CACHE) {
-            authors.entries
-                .sortedByDescending { it.value.expiresAtMs }
+        authorStrikes = loaded
+        return loaded
+    }
+
+    private fun <T> loadExpiringLocked(
+        prefs: SharedPreferences,
+        key: String,
+        nowMs: Long,
+        expiresAt: (T) -> Long,
+        decode: (String) -> Map<String, T>,
+    ): MutableMap<String, T> {
+        val loaded = LinkedHashMap<String, T>()
+        val raw = prefs.getString(key, null)
+        if (!raw.isNullOrBlank()) {
+            runCatching {
+                val map = decode(raw)
+                for ((k, v) in map) {
+                    if (expiresAt(v) > nowMs) loaded[k] = v
+                }
+            }
+        }
+        return loaded
+    }
+
+    private fun <T> pruneAndPersistLocked(
+        prefs: SharedPreferences,
+        key: String,
+        entries: MutableMap<String, T>,
+        nowMs: Long,
+        expiresAt: (T) -> Long,
+        encode: (Map<String, T>) -> String,
+    ): MutableMap<String, T> {
+        val iter = entries.entries.iterator()
+        while (iter.hasNext()) {
+            if (expiresAt(iter.next().value) <= nowMs) iter.remove()
+        }
+        val trimmed: LinkedHashMap<String, T> = if (entries.size > MAX_AUTHOR_CACHE) {
+            entries.entries
+                .sortedByDescending { expiresAt(it.value) }
                 .take(MAX_AUTHOR_CACHE)
-                .associate { it.key to it.value }
+                .associateTo(LinkedHashMap()) { it.key to it.value }
         } else {
-            authors
+            LinkedHashMap(entries)
         }
         runCatching {
-            prefs.edit().putString(KEY_AUTHOR_CACHE, json.encodeToString(trimmed)).apply()
+            prefs.edit().putString(key, encode(trimmed)).apply()
         }
+        return trimmed
     }
 
     private fun endpointUrl(): String? {
