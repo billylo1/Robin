@@ -1,0 +1,1 @@
+Expanded Smart (AI) quality filtering to evaluate factual credibility and argument validity, hiding demonstrably unfactual claims and flawed arguments while preserving opinions, humor, and recent news.

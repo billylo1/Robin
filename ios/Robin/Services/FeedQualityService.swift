@@ -75,6 +75,7 @@ actor FeedQualityService {
         "non_human_aggregator",
         "engagement_bait",
         "ai_slop",
+        "unfactual_claim",
     ]
 
     private static let authorCacheKey = "robin:feedQuality:authorCache:v1"

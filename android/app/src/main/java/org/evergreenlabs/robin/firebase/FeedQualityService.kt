@@ -108,6 +108,7 @@ object FeedQualityService {
         "non_human_aggregator",
         "engagement_bait",
         "ai_slop",
+        "unfactual_claim",
     )
 
     private val json = Json {

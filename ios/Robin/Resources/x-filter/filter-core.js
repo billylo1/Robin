@@ -253,6 +253,8 @@
     mention_pod_spam: "Filtered \u00b7 Mention spam",
     bot_bio: "Filtered \u00b7 Bot account",
     cached_acct: "Filtered \u00b7 Repeat offender",
+    unfactual_claim: "Filtered \u00b7 Unfactual / misleading",
+    invalid_argument: "Filtered \u00b7 Flawed argument",
   };
 
   function qualityReasonLabel(reason) {

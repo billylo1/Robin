@@ -980,6 +980,10 @@ async function runTests() {
   assert(reqPayload.input.includes("posts/day=14.4"));
   assert(reqPayload.input.includes("age=90d"));
   assert(reqPayload.input.includes("links=arxiv.org,github.com,docs.rs"));
+  assert(reqPayload.questions.p0_class && reqPayload.questions.p0_class.type === "choice");
+  assert(reqPayload.questions.p0_account_wide && reqPayload.questions.p0_account_wide.type === "noul");
+  assert(reqPayload.questions.p0_unfactual && reqPayload.questions.p0_unfactual.type === "noul");
+  assert(reqPayload.questions.p0_bad_argument && reqPayload.questions.p0_bad_argument.type === "noul");
 
   const verdictPosts = [
     { id: "8001", handle: "ai_borderline" },
@@ -988,6 +992,10 @@ async function runTests() {
     { id: "8004", handle: "agg_low_noul" },
     { id: "8005", handle: "agg_high_noul" },
     { id: "8006", handle: "split_prob_agg" },
+    { id: "8007", handle: "keep_but_hoax" },
+    { id: "8008", handle: "keep_but_fallacy" },
+    { id: "8009", handle: "keep_borderline_cred" },
+    { id: "8010", handle: "agg_and_hoax" },
   ];
   const verdicts = fnInternal.parseDecisionVerdicts(verdictPosts, {
     answers: {
@@ -1003,6 +1011,22 @@ async function runTests() {
       p4_account_wide: { noul: 0.90 },
       p5_class: { choice: "non_human_aggregator", confidence: 0.42, probabilities: { keep: 0.27, non_human_aggregator: 0.42, ai_slop: 0.25 } },
       p5_account_wide: { noul: 0.78 },
+      p6_class: { choice: "keep", probabilities: { keep: 0.90 } },
+      p6_account_wide: { noul: 0.20 },
+      p6_unfactual: { noul: 0.92 },
+      p6_bad_argument: { noul: 0.60 },
+      p7_class: { choice: "keep", probabilities: { keep: 0.85 } },
+      p7_account_wide: { noul: 0.15 },
+      p7_unfactual: { noul: 0.40 },
+      p7_bad_argument: { noul: 0.91 },
+      p8_class: { choice: "keep", probabilities: { keep: 0.78 } },
+      p8_account_wide: { noul: 0.05 },
+      p8_unfactual: { noul: 0.72 },
+      p8_bad_argument: { noul: 0.79 },
+      p9_class: { choice: "non_human_aggregator", probabilities: { keep: 0.10, non_human_aggregator: 0.80 } },
+      p9_account_wide: { noul: 0.90 },
+      p9_unfactual: { noul: 0.95 },
+      p9_bad_argument: { noul: 0.88 },
     },
   });
   assert.deepStrictEqual(
@@ -1012,8 +1036,11 @@ async function runTests() {
       { id: "8004", handle: "agg_low_noul", reason: "non_human_aggregator", accountWide: false },
       { id: "8005", handle: "agg_high_noul", reason: "non_human_aggregator", accountWide: true },
       { id: "8006", handle: "split_prob_agg", reason: "non_human_aggregator", accountWide: false },
+      { id: "8007", handle: "keep_but_hoax", reason: "unfactual_claim", accountWide: false },
+      { id: "8008", handle: "keep_but_fallacy", reason: "invalid_argument", accountWide: false },
+      { id: "8010", handle: "agg_and_hoax", reason: "non_human_aggregator", accountWide: true },
     ],
-    "Per-category thresholds and aggregator-only 1-strike accountWide must match spec"
+    "Per-category thresholds, credibility/validity overrides, and aggregator precedence must match spec"
   );
 
   // 9. Show/hide filtered slop toggle, reason labels, count status, tab switch & route transitions
@@ -1035,9 +1062,13 @@ async function runTests() {
   const revBaitCell = createTweetCell("bait_9", "9001", 'Comment "AI" and I\'ll DM you!');
   const revAggCell = createTweetCell("agg_9", "9002", "Repacked clip via aggregator");
   const revHumanCell = createTweetCell("human_9", "9003", "Building an open-source iOS feed reader.");
+  const revHoaxCell = createTweetCell("hoax_9", "9004", "Baking soda kills 100% of cancer in 7 days.");
+  const revFallacyCell = createTweetCell("fallacy_9", "9005", "All remote engineers produce zero output.");
   revEnv.bodyEl.appendChild(revBaitCell);
   revEnv.bodyEl.appendChild(revAggCell);
   revEnv.bodyEl.appendChild(revHumanCell);
+  revEnv.bodyEl.appendChild(revHoaxCell);
+  revEnv.bodyEl.appendChild(revFallacyCell);
 
   const rp = revEnv.windowObj.fetch("https://x.com/i/api/graphql/abc123/HomeTimeline?variables=%7B%7D");
   revEnv.fetchResolvers[0].resolve({
@@ -1053,6 +1084,8 @@ async function runTests() {
                       makeGraphQLEntry({ id: "9001", handle: "bait_9", text: 'Comment "AI" and I\'ll DM you!' }),
                       makeGraphQLEntry({ id: "9002", handle: "agg_9", text: "Repacked clip via aggregator" }),
                       makeGraphQLEntry({ id: "9003", handle: "human_9", text: "Building an open-source iOS feed reader." }),
+                      makeGraphQLEntry({ id: "9004", handle: "hoax_9", text: "Baking soda kills 100% of cancer in 7 days." }),
+                      makeGraphQLEntry({ id: "9005", handle: "fallacy_9", text: "All remote engineers produce zero output." }),
                     ],
                   },
                 ],
@@ -1067,13 +1100,17 @@ async function runTests() {
 
   revEnv.windowObj.__ROBIN_APPLY_FEED_FILTER__({
     keptIds: ["9003"],
-    hidden: [{ id: "9002", handle: "agg_9", reason: "non_human_aggregator", accountWide: false }],
+    hidden: [
+      { id: "9002", handle: "agg_9", reason: "non_human_aggregator", accountWide: false },
+      { id: "9004", handle: "hoax_9", reason: "unfactual_claim", accountWide: false },
+      { id: "9005", handle: "fallacy_9", reason: "invalid_argument", accountWide: false },
+    ],
   });
 
   assert.deepStrictEqual(
     revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
-    { active: true, count: 2, revealed: false },
-    "Status handler must report active=true, count=2, revealed=false after Tier 1 + Tier 2 hides"
+    { active: true, count: 4, revealed: false },
+    "Status handler must report active=true, count=4, revealed=false after Tier 1 + Tier 2 hides"
   );
 
   // Toggle reveal ON
@@ -1087,10 +1124,12 @@ async function runTests() {
   assert.strictEqual(revAggCell.style.display, "", "Reveal ON restores display on AI cell");
   assert.strictEqual(revAggCell.getAttribute("data-mt-quality-revealed"), "1");
   assert.strictEqual(revAggCell.getAttribute("data-mt-quality-label"), "Filtered \u00b7 Aggregator");
+  assert.strictEqual(revHoaxCell.getAttribute("data-mt-quality-label"), "Filtered \u00b7 Unfactual / misleading");
+  assert.strictEqual(revFallacyCell.getAttribute("data-mt-quality-label"), "Filtered \u00b7 Flawed argument");
   assert.strictEqual(revHumanCell.getAttribute("data-mt-quality-revealed"), null, "Human post must not be marked revealed");
   assert.deepStrictEqual(
     revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
-    { active: true, count: 2, revealed: true },
+    { active: true, count: 4, revealed: true },
     "Status handler must report revealed=true when toggled ON"
   );
 
@@ -1104,7 +1143,7 @@ async function runTests() {
   assert.strictEqual(revAggCell.style.display, "none");
   assert.deepStrictEqual(
     revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
-    { active: true, count: 2, revealed: false },
+    { active: true, count: 4, revealed: false },
     "Status handler must report revealed=false when toggled OFF"
   );
 
@@ -1118,7 +1157,7 @@ async function runTests() {
   revEnv.windowObj.history.pushState({}, "", "/home");
   assert.deepStrictEqual(
     revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
-    { active: true, count: 2, revealed: false },
+    { active: true, count: 4, revealed: false },
     "Returning to /home must restore active=true and filtered count"
   );
 

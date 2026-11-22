@@ -125,7 +125,7 @@ struct InfoSheet: View {
                     Text("Home Feed")
                 } footer: {
                     if filterStore.settings.homeFeedMode == .forYou || !filterStore.settings.hidePageHeader {
-                        Text("Hides non-human aggregators, engagement bait, AI slop, and useless comments on For You and category tabs. Following and followed accounts are never hidden.")
+                        Text("Hides non-human aggregators, engagement bait, AI slop, useless comments, and misleading or flawed claims on For You and category tabs. Following and followed accounts are never hidden.")
                     }
                 }
 

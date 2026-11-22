@@ -17,6 +17,8 @@ const DECISIONS_ENDPOINT =
 const MAX_POSTS_PER_BATCH = 20;
 const KEEP_PROB_HIDE_THRESHOLD = 0.35;
 const ACCOUNT_WIDE_THRESHOLD = 0.85;
+const UNFACTUAL_HIDE_THRESHOLD = 0.80;
+const INVALID_ARGUMENT_HIDE_THRESHOLD = 0.85;
 const CATEGORY_KEEP_THRESHOLDS = {
   non_human_aggregator: 0.35,
   engagement_bait: 0.35,
@@ -96,9 +98,10 @@ function sanitizePost(raw) {
 
 function buildDecisionRequest(posts) {
   const lines = [
-    "You are classifying X (Twitter) posts from an algorithmic 'For You' feed.",
-    "Preserve original human authors sharing real work, ideas, demos, or substantive commentary.",
-    "Flag non-human aggregators/repost farms, engagement bait, useless zero-substance comments, and AI slop.",
+    "You are evaluating X (Twitter) posts from an algorithmic 'For You' feed for author quality, factual credibility, and argument validity.",
+    "Preserve original human authors sharing real work, ideas, demos, legitimate opinions, skeptical questions, or humor/satire.",
+    "Flag non-human aggregators/repost farms, engagement bait, useless zero-substance comments, AI slop, demonstrably unfactual/misleading claims, and clearly fallacious or bad-faith arguments.",
+    "Do NOT penalize unfamiliar recent news, new tech/paper releases, personal anecdotes, or reasonable debates as unfactual or invalid.",
     "",
   ];
   const questions = {};
@@ -142,6 +145,14 @@ function buildDecisionRequest(posts) {
       type: "noul",
       instructions: `Is the author of post [${tag}] (@${p.handle || "unknown"}) clearly a non-human account, automated bot, viral clip/news aggregator, or repost content-mill (NOT an individual human author) whose future posts should always be hidden?`,
     };
+    questions[`p${i}_unfactual`] = {
+      type: "noul",
+      instructions: `Does post [${tag}] make a demonstrably false, pseudoscientific, fabricated, scammy, or grossly misleading factual claim? Answer NO for unfamiliar recent news/releases, personal anecdotes, legitimate opinions/debates, skeptical questions, or obvious jokes/sarcasm; answer YES only when the factual claim itself is clearly false, debunked, or deceptive.`,
+    };
+    questions[`p${i}_bad_argument`] = {
+      type: "noul",
+      instructions: `Does post [${tag}] rely on a clearly invalid, logically fallacious, or intellectually dishonest argument (e.g., sweeping hasty generalization, blatant strawman, absurd non-sequitur, fabricated statistics, or manipulative fear/miracle-cure logic)? Answer NO for casual updates, demos, obvious jokes/hyperbole, skeptical questions, or reasonable opinionated takes; answer YES only for clearly flawed, bad-faith, or manipulative reasoning.`,
+    };
   }
 
   return {
@@ -159,10 +170,12 @@ function parseDecisionVerdicts(posts, apiResponse) {
     const p = posts[i];
     const cls = answers[`p${i}_class`];
     const acct = answers[`p${i}_account_wide`];
-    if (!cls) continue;
+    const unfactual = answers[`p${i}_unfactual`];
+    const badArg = answers[`p${i}_bad_argument`];
+    if (!cls && !unfactual && !badArg) continue;
 
-    const choice = cls.choice || "";
-    const probs = cls.probabilities || cls.scores || {};
+    const choice = (cls && cls.choice) || "keep";
+    const probs = (cls && (cls.probabilities || cls.scores)) || {};
     const keepProb =
       typeof probs.keep === "number"
         ? probs.keep
@@ -173,8 +186,11 @@ function parseDecisionVerdicts(posts, apiResponse) {
       Object.prototype.hasOwnProperty.call(CATEGORY_KEEP_THRESHOLDS, choice)
         ? CATEGORY_KEEP_THRESHOLDS[choice]
         : 0.30;
+    const slopHide = Boolean(cls && choice && choice !== "keep" && keepProb < threshold);
+    const unfactualProb = unfactual && typeof unfactual.noul === "number" ? unfactual.noul : 0;
+    const badArgProb = badArg && typeof badArg.noul === "number" ? badArg.noul : 0;
 
-    if (choice && choice !== "keep" && keepProb < threshold) {
+    if (slopHide) {
       const accountWide = Boolean(
         choice === "non_human_aggregator" &&
           acct &&
@@ -186,6 +202,20 @@ function parseDecisionVerdicts(posts, apiResponse) {
         handle: p.handle,
         reason: choice,
         accountWide,
+      });
+    } else if (unfactualProb >= UNFACTUAL_HIDE_THRESHOLD) {
+      hidden.push({
+        id: p.id,
+        handle: p.handle,
+        reason: "unfactual_claim",
+        accountWide: false,
+      });
+    } else if (badArgProb >= INVALID_ARGUMENT_HIDE_THRESHOLD) {
+      hidden.push({
+        id: p.id,
+        handle: p.handle,
+        reason: "invalid_argument",
+        accountWide: false,
       });
     }
   }
@@ -284,4 +314,6 @@ exports._internal = {
   CATEGORY_KEEP_THRESHOLDS,
   KEEP_PROB_HIDE_THRESHOLD,
   ACCOUNT_WIDE_THRESHOLD,
+  UNFACTUAL_HIDE_THRESHOLD,
+  INVALID_ARGUMENT_HIDE_THRESHOLD,
 };

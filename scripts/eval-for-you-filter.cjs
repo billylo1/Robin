@@ -232,12 +232,16 @@ async function runSuite(name, rawPosts, apiKey, labeled = false) {
         const { meta, rawText } = slice[i];
         const cls = answers[`p${i}_class`] || {};
         const acct = answers[`p${i}_account_wide`] || {};
+        const unfact = answers[`p${i}_unfactual`] || {};
+        const badArg = answers[`p${i}_bad_argument`] || {};
         const choice = cls.choice || "keep";
         const probs = cls.probabilities || cls.scores || {};
         const keepProb =
           typeof probs.keep === "number" ? probs.keep : choice === "keep" ? 1 : 0;
         const conf = typeof cls.confidence === "number" ? cls.confidence : 0;
         const acctProb = typeof acct.noul === "number" ? acct.noul : 0;
+        const unfactProb = typeof unfact.noul === "number" ? unfact.noul : 0;
+        const badArgProb = typeof badArg.noul === "number" ? badArg.noul : 0;
         const h = hiddenMap.get(meta.id);
         const hide = Boolean(h);
         if (hide) tier2HiddenCount++;
@@ -250,12 +254,14 @@ async function runSuite(name, rawPosts, apiKey, labeled = false) {
           keepProb,
           conf,
           acctProb,
+          unfactProb,
+          badArgProb,
         });
 
         const status = hide ? `HIDE:${h.reason}` : "KEEP";
         const acctTag = h && h.accountWide ? " [ACCT-WIDE]" : "";
         console.log(
-          `  [${status}${acctTag}] P(keep)=${keepProb.toFixed(2)} conf=${conf.toFixed(2)} P(acct)=${acctProb.toFixed(2)} @${meta.handle}: ${JSON.stringify(rawText.slice(0, 85))}`
+          `  [${status}${acctTag}] P(keep)=${keepProb.toFixed(2)} conf=${conf.toFixed(2)} P(acct)=${acctProb.toFixed(2)} P(unfact)=${unfactProb.toFixed(2)} P(badArg)=${badArgProb.toFixed(2)} @${meta.handle}: ${JSON.stringify(rawText.slice(0, 80))}`
         );
       }
     }
@@ -558,6 +564,179 @@ const SUITE_2_GOLDEN = [
   },
 ];
 
+const SUITE_3_CREDIBILITY = [
+  {
+    id: "91001",
+    author: "claudeai",
+    bio: "Official Anthropic account for Claude",
+    followers: 950000,
+    friends: 30,
+    statusesPerDay: 2.1,
+    accountAgeDays: 1100,
+    hasMedia: true,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "Lots of inventive things made with Claude these past few weeks. A working watermill, built with Opus 5.5.",
+  },
+  {
+    id: "91002",
+    author: "hwchase17",
+    bio: "Co-founder & CEO at LangChain",
+    followers: 185000,
+    friends: 920,
+    statusesPerDay: 1.9,
+    accountAgeDays: 4200,
+    hasMedia: true,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "we're seeing our coding agent costs decrease significantly for second month in row. Three steps we took: 1/ cost visibility 2/ prompt caching 3/ routing simple tasks to smaller models.",
+  },
+  {
+    id: "91003",
+    author: "econ_take",
+    bio: "Macroeconomist & industrial policy researcher",
+    followers: 24000,
+    friends: 480,
+    statusesPerDay: 2.3,
+    accountAgeDays: 2600,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "Broad tariffs act as a regressive tax on working families and raise input costs for domestic manufacturers. We tried this in the 1930s and it backfired badly.",
+  },
+  {
+    id: "91004",
+    author: "controversial_ai",
+    bio: "ML Systems Engineer",
+    followers: 11200,
+    friends: 510,
+    statusesPerDay: 1.4,
+    accountAgeDays: 2100,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "Hot take: LLMs will never reach AGI through next-token prediction alone. Scaling parameters without grounded world models is hitting diminishing returns.",
+  },
+  {
+    id: "91005",
+    author: "dev_joke",
+    bio: "Frontend engineer who likes simple HTML",
+    followers: 8300,
+    friends: 420,
+    statusesPerDay: 1.2,
+    accountAgeDays: 1900,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "JavaScript is literally a crime against humanity and everyone who ships a 400MB node_modules folder to render a button should be tried at The Hague 😂",
+  },
+  {
+    id: "91006",
+    author: "npinto",
+    bio: "Computer scientist & ML researcher",
+    followers: 42000,
+    friends: 890,
+    statusesPerDay: 2.0,
+    accountAgeDays: 5100,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "So wait something doesn't add up. Engineers said it took them 2200 GPU hours to train that model — how is that possible? 91 days? $4400? Either the math is off or they only counted fine-tuning.",
+  },
+  {
+    id: "91007",
+    author: "DAcemogluMIT",
+    bio: "Institute Professor at MIT",
+    followers: 145000,
+    friends: 210,
+    statusesPerDay: 0.8,
+    accountAgeDays: 3900,
+    expected: "keep",
+    expectedAccountWide: false,
+    text: "Fifth question on AI. AI is currently viewed as a centralizing technology – with ever-larger models, trained on much of the world's knowledge, running on massive, concentrated compute. We should invest more in pro-worker complementary tools instead.",
+  },
+  {
+    id: "91008",
+    author: "miracle_health99",
+    bio: "Natural healing & holistic wellness tips",
+    followers: 31000,
+    friends: 650,
+    statusesPerDay: 6.4,
+    accountAgeDays: 720,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "Doctors don't want you to know this! Drinking raw baking soda + lemon water every morning alkalizes your blood pH and kills 100% of cancer cells in 7 days. Big Pharma hides this!",
+  },
+  {
+    id: "91009",
+    author: "physics_hoax",
+    bio: "Breaking suppressed science & tech leaks",
+    followers: 18900,
+    friends: 400,
+    statusesPerDay: 4.5,
+    accountAgeDays: 540,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "BREAKING: A garage inventor just built a neodymium magnet motor that generates 500% free energy forever with zero fuel input, breaking the second law of thermodynamics. Oil companies already tried to buy and bury it!",
+  },
+  {
+    id: "91010",
+    author: "subtle_tech_false",
+    bio: "Software career coach & systems mentor",
+    followers: 22400,
+    friends: 340,
+    statusesPerDay: 5.1,
+    accountAgeDays: 610,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "PSA for junior devs: TCP is completely stateless and does not guarantee packet ordering or delivery — that's why banks switched to UDP for financial transactions.",
+  },
+  {
+    id: "91011",
+    author: "history_myth",
+    bio: "Daily mind-blowing psychology & history facts",
+    followers: 47000,
+    friends: 150,
+    statusesPerDay: 7.2,
+    accountAgeDays: 880,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "Fun fact: Humans only use 10% of their brain, and Albert Einstein failed high school math — proof that schools destroy genius!",
+  },
+  {
+    id: "91012",
+    author: "fallacy_bro",
+    bio: "Tech founder & investor",
+    followers: 15600,
+    friends: 720,
+    statusesPerDay: 4.8,
+    accountAgeDays: 1120,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "Remote workers are 100% lazy frauds. One guy at my friend's company played video games during a call, which proves every single remote engineering team produces zero real output and should be fired immediately.",
+  },
+  {
+    id: "91013",
+    author: "cherry_pick_doom",
+    bio: "Independent market commentator",
+    followers: 29000,
+    friends: 590,
+    statusesPerDay: 9.0,
+    accountAgeDays: 790,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "The middle class is 100% dead and buried. Because eggs went up 40% this month, the entire US economy has entered irreversible hyperinflation and stocks are going to zero.",
+  },
+  {
+    id: "91014",
+    author: "traderlexcom",
+    bio: "Quantitative crypto signals & VIP alerts",
+    followers: 14200,
+    friends: 220,
+    statusesPerDay: 6.1,
+    accountAgeDays: 410,
+    expected: "hide",
+    expectedAccountWide: false,
+    text: "Since 2020 our secret indicator is up +5,400% with ZERO losing months! Guaranteed 10x passive income on BTC & gold — DM 'RICH' to join our VIP signals before spots close.",
+  },
+];
+
 async function main() {
   const apiKey = process.env.GEMINI_API_KEY || "";
   const raw = JSON.parse(fs.readFileSync(FEEDS_PATH, "utf8"));
@@ -572,6 +751,7 @@ async function main() {
 
   await runSuite("Suite 1: Real For You Corpus (feeds.json)", unfollowed, apiKey, false);
   await runSuite("Suite 2: Labeled Golden Stress Set", SUITE_2_GOLDEN, apiKey, true);
+  await runSuite("Suite 3: Labeled Credibility & Argument Validity Set", SUITE_3_CREDIBILITY, apiKey, true);
 }
 
 main().catch((err) => {

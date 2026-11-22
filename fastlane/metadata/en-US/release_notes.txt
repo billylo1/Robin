@@ -1,1 +1,1 @@
-Added a header toggle button to show or hide filtered low-quality posts with the filtered count.
+Expanded Smart (AI) quality filtering to evaluate factual credibility and argument validity, hiding demonstrably unfactual claims and flawed arguments while preserving opinions, humor, and recent news.
