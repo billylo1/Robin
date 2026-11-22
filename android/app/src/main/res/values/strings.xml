@@ -19,6 +19,8 @@
     <string name="preparing_feed">Preparing feed…</string>
     <string name="refresh">Refresh</string>
     <string name="new_post">New post</string>
+    <string name="show_filtered_posts">Show %1$d filtered posts</string>
+    <string name="hide_filtered_posts">Hide %1$d filtered posts</string>
     <string name="about">About</string>
     <string name="credits">Credits</string>
     <string name="about_minimal_twitter">Feed filters adapted from Minimal Theme for Twitter / X by Typefully (MIT).</string>

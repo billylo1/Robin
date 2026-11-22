@@ -125,6 +125,9 @@
       var isFollowingOp = op === "HomeLatestTimeline";
       var onQualityPath = isQualityFeedPath();
       window.__ROBIN_QUALITY_FEED_ACTIVE__ = !isFollowingOp && onQualityPath;
+      if (isFollowingOp && typeof resetQualityFeedView === "function") {
+        resetQualityFeedView();
+      }
       var ins = extractTimelineInstructions(JSON.parse(text));
       var batch = [];
       var stats = { localHidden: [], followedExempt: 0 };
@@ -224,9 +227,89 @@
   var QUALITY_BATCH_MAX = 20;
   var QUALITY_CACHE_MAX = 1000;
   var qualityDecisionById = {};
+  var qualityReasonById = {};
   var qualityDecisionOrder = [];
   var qualityQueuedById = {};
   var qualityHiddenHandles = {};
+  var qualityHandleReason = {};
+  var qualityCurrentFeedHiddenIds = {};
+  var qualityRevealSlop = false;
+  var lastReportedQualityStatus = "";
+  var lastQualityFeedKey = isQualityFeedPath()
+    ? isHomePath()
+      ? "/home"
+      : location.pathname || ""
+    : "";
+
+  var QUALITY_REASON_LABELS = {
+    non_human_aggregator: "Filtered \u00b7 Aggregator",
+    aggregator_attribution: "Filtered \u00b7 Aggregator",
+    engagement_bait: "Filtered \u00b7 Engagement bait",
+    engagement_bait_cta: "Filtered \u00b7 Engagement bait",
+    ai_slop: "Filtered \u00b7 AI slop",
+    useless_comment: "Filtered \u00b7 Low-substance",
+    useless_short: "Filtered \u00b7 Low-substance",
+    hashtag_spam: "Filtered \u00b7 Hashtag spam",
+    mention_pod_spam: "Filtered \u00b7 Mention spam",
+    bot_bio: "Filtered \u00b7 Bot account",
+    cached_acct: "Filtered \u00b7 Repeat offender",
+  };
+
+  function qualityReasonLabel(reason) {
+    return (reason && QUALITY_REASON_LABELS[reason]) || "Filtered \u00b7 Low quality";
+  }
+
+  function noteQualityHidden(id, reason) {
+    if (!id) return;
+    var key = String(id);
+    var resolved = reason || qualityReasonById[key] || qualityCurrentFeedHiddenIds[key] || "filtered";
+    qualityCurrentFeedHiddenIds[key] = resolved;
+    if (!qualityReasonById[key] || reason) {
+      qualityReasonById[key] = resolved;
+    }
+  }
+
+  function currentQualityHiddenCount() {
+    return Object.keys(qualityCurrentFeedHiddenIds).length;
+  }
+
+  function resetQualityFeedView() {
+    qualityCurrentFeedHiddenIds = {};
+    qualityRevealSlop = false;
+  }
+
+  function reportQualityStatus() {
+    var settings = currentSettings();
+    var mode = qualityFilterMode(settings);
+    if (mode === "off") {
+      qualityRevealSlop = false;
+      qualityCurrentFeedHiddenIds = {};
+    }
+    var active = isQualityFeedActive(settings);
+    var count = active ? currentQualityHiddenCount() : 0;
+    var revealed = active && qualityRevealSlop;
+    var key = (active ? "1" : "0") + ":" + count + ":" + (revealed ? "1" : "0");
+    if (key === lastReportedQualityStatus) return;
+    lastReportedQualityStatus = key;
+    var payload = { active: active, count: count, revealed: revealed };
+    try {
+      if (
+        window.webkit &&
+        window.webkit.messageHandlers &&
+        window.webkit.messageHandlers.robinFeedQualityStatus
+      ) {
+        window.webkit.messageHandlers.robinFeedQualityStatus.postMessage(payload);
+      }
+    } catch (e) {}
+    try {
+      if (
+        window.RobinFeedFilter &&
+        typeof window.RobinFeedFilter.updateStatus === "function"
+      ) {
+        window.RobinFeedFilter.updateStatus(active, count, revealed);
+      }
+    } catch (e2) {}
+  }
 
   var RE_QUALITY_ATTRIBUTION = /(?:^|\s)(?:by|via|cc|credit:?|h\/t)\s+@\w+/i;
   var RE_QUALITY_BAIT_CTA =
@@ -243,17 +326,23 @@
     return "ai";
   }
 
-  function rememberQualityDecision(id, verdict) {
+  function rememberQualityDecision(id, verdict, reason) {
     if (!id) return;
     if (!Object.prototype.hasOwnProperty.call(qualityDecisionById, id)) {
       qualityDecisionOrder.push(id);
       if (qualityDecisionOrder.length > QUALITY_CACHE_MAX) {
         var oldest = qualityDecisionOrder.shift();
         delete qualityDecisionById[oldest];
+        delete qualityReasonById[oldest];
         delete qualityQueuedById[oldest];
       }
     }
     qualityDecisionById[id] = verdict;
+    if (verdict === "hide" && reason) {
+      qualityReasonById[id] = reason;
+    } else if (verdict === "keep") {
+      delete qualityReasonById[id];
+    }
   }
 
   function qualityClampStr(s, maxLen) {
@@ -382,11 +471,18 @@
     );
     var handleLower = handle.toLowerCase();
     if (handleLower && qualityHiddenHandles[handleLower]) {
-      rememberQualityDecision(displayId, "hide");
+      var acctReason = qualityHandleReason[handleLower] || "cached_acct";
+      rememberQualityDecision(displayId, "hide", acctReason);
+      noteQualityHidden(displayId, acctReason);
       if (stats) stats.localHidden.push("@" + handle + "(cached_acct)");
       return;
     }
-    if (qualityDecisionById[displayId]) return;
+    if (qualityDecisionById[displayId]) {
+      if (qualityDecisionById[displayId] === "hide") {
+        noteQualityHidden(displayId, qualityReasonById[displayId] || "filtered");
+      }
+      return;
+    }
 
     var srcLegacy = source.legacy || {};
     var noteRes =
@@ -489,7 +585,8 @@
 
     var localReason = evaluateLocalQuality(meta, rawText);
     if (localReason) {
-      rememberQualityDecision(displayId, "hide");
+      rememberQualityDecision(displayId, "hide", localReason);
+      noteQualityHidden(displayId, localReason);
       if (stats) stats.localHidden.push("@" + (handle || "?") + "(" + localReason + ")");
       return;
     }
@@ -1302,14 +1399,28 @@
 
   function unmarkQualityHide(el) {
     if (!el || !el.removeAttribute) return;
-    if (el.getAttribute("data-mt-quality-hide") !== "1") return;
+    var hadHide = el.getAttribute("data-mt-quality-hide") === "1";
+    var hadRev = el.getAttribute("data-mt-quality-revealed") === "1";
+    if (!hadHide && !hadRev && el.getAttribute("data-mt-quality-label") === null) return;
     el.removeAttribute("data-mt-quality-hide");
+    el.removeAttribute("data-mt-quality-revealed");
+    el.removeAttribute("data-mt-quality-label");
     updateCellHideDisplay(el);
   }
 
   function markQualityHide(el) {
     if (!el) return;
+    el.removeAttribute("data-mt-quality-revealed");
+    el.removeAttribute("data-mt-quality-label");
     el.setAttribute("data-mt-quality-hide", "1");
+    updateCellHideDisplay(el);
+  }
+
+  function markQualityRevealed(el, reason) {
+    if (!el) return;
+    el.removeAttribute("data-mt-quality-hide");
+    el.setAttribute("data-mt-quality-revealed", "1");
+    el.setAttribute("data-mt-quality-label", qualityReasonLabel(reason));
     updateCellHideDisplay(el);
   }
 
@@ -1372,18 +1483,55 @@
     return false;
   }
 
+  function qualityReasonForCell(cell) {
+    var id = statusIdFromCell(cell);
+    if (id) {
+      if (qualityReasonById[id]) return qualityReasonById[id];
+      if (qualityCurrentFeedHiddenIds[id]) return qualityCurrentFeedHiddenIds[id];
+    }
+    var handle = handleFromCell(cell);
+    if (handle && qualityHandleReason[handle]) return qualityHandleReason[handle];
+    return "cached_acct";
+  }
+
+  function applyQualityCellState(cell, settings, protectScroll) {
+    if (!shouldQualityHideCell(cell, settings)) {
+      unmarkQualityHide(cell);
+      return false;
+    }
+    var id = statusIdFromCell(cell);
+    var reason = qualityReasonForCell(cell);
+    if (id) noteQualityHidden(id, reason);
+    if (qualityRevealSlop) {
+      markQualityRevealed(cell, reason);
+      return false;
+    }
+    if (protectScroll && cellIsAboveViewport(cell)) {
+      cell.removeAttribute("data-mt-quality-revealed");
+      cell.removeAttribute("data-mt-quality-label");
+      return false;
+    }
+    markQualityHide(cell);
+    return true;
+  }
+
   function hideQualityPosts(root, protectScroll) {
     var settings = currentSettings();
     var scope = root && root.querySelectorAll ? root : document;
     var active = isQualityFeedActive(settings);
     if (!active) {
-      if (scope.getAttribute && scope.getAttribute("data-mt-quality-hide") === "1") {
+      if (
+        scope.getAttribute &&
+        (scope.getAttribute("data-mt-quality-hide") === "1" ||
+          scope.getAttribute("data-mt-quality-revealed") === "1")
+      ) {
         unmarkQualityHide(scope);
       }
       var hidden = scope.querySelectorAll
-        ? scope.querySelectorAll("[data-mt-quality-hide]")
+        ? scope.querySelectorAll("[data-mt-quality-hide], [data-mt-quality-revealed]")
         : [];
       for (var h = 0; h < hidden.length; h++) unmarkQualityHide(hidden[h]);
+      reportQualityStatus();
       return;
     }
     var cells;
@@ -1393,15 +1541,16 @@
       cells = scope.querySelectorAll('[data-testid="cellInnerDiv"]');
     }
     for (var i = 0; i < cells.length; i++) {
-      var cell = cells[i];
-      if (shouldQualityHideCell(cell, settings)) {
-        if (protectScroll && cellIsAboveViewport(cell)) continue;
-        markQualityHide(cell);
-      } else {
-        unmarkQualityHide(cell);
-      }
+      applyQualityCellState(cells[i], settings, protectScroll);
     }
+    reportQualityStatus();
   }
+
+  window.__ROBIN_SET_REVEAL_SLOP__ = function (reveal) {
+    qualityRevealSlop = Boolean(reveal);
+    hideQualityPosts(document, false);
+    reportQualityStatus();
+  };
 
   window.__ROBIN_APPLY_FEED_FILTER__ = function (rawPayload) {
     try {
@@ -1420,9 +1569,16 @@
       for (var i = 0; i < hidden.length; i++) {
         var item = hidden[i];
         if (!item) continue;
-        if (item.id) rememberQualityDecision(String(item.id), "hide");
+        var reason = item.reason || "filtered";
+        if (item.id) {
+          var sid = String(item.id);
+          rememberQualityDecision(sid, "hide", reason);
+          noteQualityHidden(sid, reason);
+        }
         if (item.accountWide && item.handle) {
-          qualityHiddenHandles[String(item.handle).toLowerCase()] = true;
+          var h = String(item.handle).toLowerCase();
+          qualityHiddenHandles[h] = true;
+          qualityHandleReason[h] = reason;
         }
       }
       hideQualityPosts(document, true);
@@ -2146,6 +2302,7 @@
     window.__ROBIN_USER_PICKED_TAB__ = Date.now();
     var label = tabNodeLabel(t);
     var followingPicked = isFollowingLabel(label);
+    resetQualityFeedView();
     window.__ROBIN_QUALITY_FEED_ACTIVE__ = !followingPicked;
     if (!followingPicked) {
       removeCaughtUpMarker();
@@ -3062,11 +3219,8 @@
     var settings = currentSettings();
 
     // 1b. For You quality filter (Tier 0 cache + Tier 1 heuristics + Tier 2 AI verdicts)
-    if (shouldQualityHideCell(cell, settings)) {
-      markQualityHide(cell);
+    if (applyQualityCellState(cell, settings, false)) {
       return;
-    } else {
-      unmarkQualityHide(cell);
     }
 
     // 2. Social context (repost time)
@@ -3220,6 +3374,7 @@
     maybeRevealBoot();
     notePinChrome();
     checkDOMHealth();
+    reportQualityStatus();
   }
 
   var reportedTabsMissing = false;
@@ -3963,7 +4118,15 @@
     if (href === lastHref) return;
     var prev = lastHref;
     lastHref = href;
+    if (isQualityFeedPath()) {
+      var nextKey = isHomePath() ? "/home" : location.pathname || "";
+      if (lastQualityFeedKey && nextKey !== lastQualityFeedKey) {
+        resetQualityFeedView();
+      }
+      lastQualityFeedKey = nextKey;
+    }
     onFeedPathChange(prev, href);
+    reportQualityStatus();
     requestFullPass();
   }
 

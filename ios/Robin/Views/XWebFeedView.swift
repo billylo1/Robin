@@ -164,6 +164,9 @@ struct XWebFeedView: View {
     /// One automatic /home reload per refresh when X paints the welcome empty state.
     @State private var welcomeAutoRetryUsed = false
     @State private var activeFactCheck: FactCheckRequest?
+    @State private var qualityFilterActive = false
+    @State private var qualityFilteredCount = 0
+    @State private var revealFilteredSlop = false
 
     private static let scrollTopThreshold: CGFloat = 400
     private static let nearTopThreshold: CGFloat = 80
@@ -252,7 +255,12 @@ struct XWebFeedView: View {
                     onScroll: handleScroll,
                     onInteract: noteUserInteraction,
                     onWelcomeRetry: retryWelcomeLoad,
-                    onFactCheck: { req in activeFactCheck = req }
+                    onFactCheck: { req in activeFactCheck = req },
+                    onQualityStatus: { active, count, revealed in
+                        qualityFilterActive = active
+                        qualityFilteredCount = count
+                        revealFilteredSlop = revealed
+                    }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -291,6 +299,11 @@ struct XWebFeedView: View {
             FactCheckSheet(request: req)
         }
         .onChange(of: filterStore.settings) { _, newSettings in
+            if newSettings.forYouQualityFilter == .off {
+                qualityFilterActive = false
+                qualityFilteredCount = 0
+                revealFilteredSlop = false
+            }
             guard let webView else { return }
             XFilterInjector.applySettingsOnly(
                 to: webView,
@@ -406,6 +419,45 @@ struct XWebFeedView: View {
                     ? "Refresh feed"
                     : "Back to top"
             )
+            if filterStore.settings.forYouQualityFilter != .off,
+               qualityFilterActive,
+               qualityFilteredCount > 0 || revealFilteredSlop
+            {
+                Button(action: toggleRevealFilteredSlop) {
+                    HStack(spacing: 4) {
+                        Image(systemName: revealFilteredSlop ? "eye" : "eye.slash")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("\(qualityFilteredCount)")
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(revealFilteredSlop ? headerAccent : .secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(
+                                revealFilteredSlop
+                                    ? headerAccent.opacity(0.15)
+                                    : Color.primary.opacity(0.08)
+                            )
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                revealFilteredSlop ? headerAccent.opacity(0.55) : Color.clear,
+                                lineWidth: 1
+                            )
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    revealFilteredSlop
+                        ? "Hide \(qualityFilteredCount) filtered posts"
+                        : "Show \(qualityFilteredCount) filtered posts"
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
             if showScrollTop {
                 Button(action: scrollToTop) {
                     Image(systemName: "arrow.up")
@@ -622,6 +674,8 @@ struct XWebFeedView: View {
         guard let webView else { return }
         if markRefresh { lastFeedRefreshAt = Date() }
         welcomeAutoRetryUsed = false
+        qualityFilteredCount = 0
+        revealFilteredSlop = false
         cancelWarmReloadTask()
 
         let request = URLRequest(
@@ -680,6 +734,16 @@ struct XWebFeedView: View {
         hardReloadFeed(warm: false, markRefresh: false)
     }
 
+    private func toggleRevealFilteredSlop() {
+        revealFilteredSlop.toggle()
+        noteUserInteraction()
+        let flag = revealFilteredSlop ? "true" : "false"
+        webView?.evaluateJavaScript(
+            "window.__ROBIN_SET_REVEAL_SLOP__ && window.__ROBIN_SET_REVEAL_SLOP__(\(flag));",
+            completionHandler: nil
+        )
+    }
+
     private func scrollToTop() {
         guard let webView else { return }
         webView.scrollView.setContentOffset(.zero, animated: true)
@@ -722,6 +786,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
     var onInteract: () -> Void
     var onWelcomeRetry: () -> Void
     var onFactCheck: (FactCheckRequest) -> Void
+    var onQualityStatus: (Bool, Int, Bool) -> Void
 
     func makeCoordinator() -> XWebViewCoordinator {
         XWebViewCoordinator(
@@ -734,7 +799,8 @@ private struct XWebViewRepresentable: UIViewRepresentable {
             onScroll: onScroll,
             onInteract: onInteract,
             onWelcomeRetry: onWelcomeRetry,
-            onFactCheck: onFactCheck
+            onFactCheck: onFactCheck,
+            onQualityStatus: onQualityStatus
         )
     }
 
@@ -777,6 +843,10 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         )
         config.userContentController.add(
             context.coordinator,
+            name: "robinFeedQualityStatus"
+        )
+        config.userContentController.add(
+            context.coordinator,
             name: "robinSentry"
         )
         config.userContentController.addUserScript(
@@ -804,6 +874,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         context.coordinator.onScroll = onScroll
         context.coordinator.onInteract = onInteract
         context.coordinator.onWelcomeRetry = onWelcomeRetry
+        context.coordinator.onQualityStatus = onQualityStatus
 
         DispatchQueue.main.async {
             webView = wv
@@ -818,6 +889,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         context.coordinator.onScroll = onScroll
         context.coordinator.onInteract = onInteract
         context.coordinator.onWelcomeRetry = onWelcomeRetry
+        context.coordinator.onQualityStatus = onQualityStatus
         // Settings / font scale are applied via onChange in XWebFeedView — avoid
         // re-toggling zoom/classes on every SwiftUI pass (causes paint churn).
     }
@@ -830,6 +902,7 @@ private struct XWebViewRepresentable: UIViewRepresentable {
         ucc.removeScriptMessageHandler(forName: "mtInteract")
         ucc.removeScriptMessageHandler(forName: "robinFactCheck")
         ucc.removeScriptMessageHandler(forName: "robinFeedFilter")
+        ucc.removeScriptMessageHandler(forName: "robinFeedQualityStatus")
         ucc.removeScriptMessageHandler(forName: "robinSentry")
     }
 }
@@ -846,6 +919,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
     var onInteract: () -> Void
     var onWelcomeRetry: () -> Void
     var onFactCheck: (FactCheckRequest) -> Void
+    var onQualityStatus: (Bool, Int, Bool) -> Void
 
     /// After a welcome-state reload, ignore mtBoot from the document we left.
     private var rejectBootUntilFreshNonce = false
@@ -877,7 +951,8 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         onScroll: @escaping (CGFloat) -> Void,
         onInteract: @escaping () -> Void,
         onWelcomeRetry: @escaping () -> Void,
-        onFactCheck: @escaping (FactCheckRequest) -> Void
+        onFactCheck: @escaping (FactCheckRequest) -> Void,
+        onQualityStatus: @escaping (Bool, Int, Bool) -> Void
     ) {
         _pageURL = pageURL
         _progress = progress
@@ -889,6 +964,7 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         self.onInteract = onInteract
         self.onWelcomeRetry = onWelcomeRetry
         self.onFactCheck = onFactCheck
+        self.onQualityStatus = onQualityStatus
     }
 
     func userContentController(
@@ -901,8 +977,19 @@ final class XWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, W
         guard isXOrigin else { return }
 
         // Boot, retry, fact-check, feed-filter, and Sentry diagnostics must only be accepted from the main frame
-        if message.name == "robinFactCheck" || message.name == "robinFeedFilter" || message.name == "robinSentry" || message.name == "mtBoot" || message.name == "mtRetry" {
+        if message.name == "robinFactCheck" || message.name == "robinFeedFilter" || message.name == "robinFeedQualityStatus" || message.name == "robinSentry" || message.name == "mtBoot" || message.name == "mtRetry" {
             guard message.frameInfo.isMainFrame else { return }
+        }
+
+        if message.name == "robinFeedQualityStatus" {
+            let dict = message.body as? [String: Any] ?? [:]
+            let active = (dict["active"] as? Bool) ?? false
+            let count = (dict["count"] as? Int) ?? (dict["count"] as? NSNumber)?.intValue ?? 0
+            let revealed = (dict["revealed"] as? Bool) ?? false
+            DispatchQueue.main.async {
+                self.onQualityStatus(active, count, revealed)
+            }
+            return
         }
 
         if message.name == "robinFeedFilter" {

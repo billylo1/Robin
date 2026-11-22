@@ -50,6 +50,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -74,12 +75,15 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -106,6 +110,8 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toDrawable
@@ -126,6 +132,7 @@ import org.evergreenlabs.robin.ui.theme.RobinHeaderDark
 import org.evergreenlabs.robin.ui.theme.RobinRed
 import org.evergreenlabs.robin.ui.theme.RobinRedLight
 import org.evergreenlabs.robin.xfilter.FilterSettings
+import org.evergreenlabs.robin.xfilter.ForYouQualityFilterMode
 import org.evergreenlabs.robin.xfilter.XFilterInjector
 import org.evergreenlabs.robin.services.FeedRefreshIntervalStore
 import java.net.URLDecoder
@@ -277,8 +284,14 @@ private class FeedQualityBridge(
     private val scope: kotlinx.coroutines.CoroutineScope,
     private val isAiEnabled: () -> Boolean,
     private val getWebView: () -> WebView?,
+    private val onQualityStatus: (Boolean, Int, Boolean) -> Unit,
 ) {
     private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun updateStatus(active: Boolean, count: Int, revealed: Boolean) {
+        main.post { onQualityStatus(active, count, revealed) }
+    }
 
     @JavascriptInterface
     fun classifyBatch(jsonStr: String) {
@@ -909,6 +922,9 @@ fun XWebFeedScreen(
     /** One automatic /home reload per refresh when X paints the welcome empty state. */
     var welcomeAutoRetryUsed by remember { mutableStateOf(false) }
     var activeFactCheck by remember { mutableStateOf<FactCheckRequest?>(null) }
+    var qualityFilterActive by remember { mutableStateOf(false) }
+    var qualityFilteredCount by remember { mutableIntStateOf(0) }
+    var revealFilteredSlop by remember { mutableStateOf(false) }
     /** Bumped to restart the boot-cover timeout without toggling visibility. */
     var coverDeadline by remember { mutableIntStateOf(0) }
     val welcomeRetryHolder = remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -969,6 +985,8 @@ fun XWebFeedScreen(
         val wv = webViewRef ?: return
         if (markRefresh) lastFeedRefreshAtMs = System.currentTimeMillis()
         welcomeAutoRetryUsed = false
+        qualityFilteredCount = 0
+        revealFilteredSlop = false
         warmReloadJob?.cancel()
         warmReloadJob = null
 
@@ -1114,6 +1132,24 @@ fun XWebFeedScreen(
         flushPendingFeedSettingsReloadIfNeeded()
     }
 
+    LaunchedEffect(filterSettings.forYouQualityFilter) {
+        if (filterSettings.forYouQualityFilter == ForYouQualityFilterMode.Off) {
+            qualityFilterActive = false
+            qualityFilteredCount = 0
+            revealFilteredSlop = false
+        }
+    }
+
+    fun toggleRevealFilteredSlop() {
+        val next = !revealFilteredSlop
+        revealFilteredSlop = next
+        noteUserInteraction()
+        webViewRef?.evaluateJavascript(
+            "window.__ROBIN_SET_REVEAL_SLOP__ && window.__ROBIN_SET_REVEAL_SLOP__($next);",
+            null,
+        )
+    }
+
     // Slightly longer than filter-core's 5s hard reveal.
     // coverDeadline restarts the wait when a welcome-state retry keeps the cover up.
     LaunchedEffect(showBootCover, coverDeadline) {
@@ -1247,6 +1283,64 @@ fun XWebFeedScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (
+                        filterSettings.forYouQualityFilter != ForYouQualityFilterMode.Off &&
+                        qualityFilterActive &&
+                        (qualityFilteredCount > 0 || revealFilteredSlop)
+                    ) {
+                        val cdText = if (revealFilteredSlop) {
+                            stringResource(R.string.hide_filtered_posts, qualityFilteredCount)
+                        } else {
+                            stringResource(R.string.show_filtered_posts, qualityFilteredCount)
+                        }
+                        Surface(
+                            onClick = { toggleRevealFilteredSlop() },
+                            shape = RoundedCornerShape(50),
+                            color = if (revealFilteredSlop) {
+                                headerAccent.copy(alpha = 0.15f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                            },
+                            border = if (revealFilteredSlop) {
+                                BorderStroke(1.dp, headerAccent.copy(alpha = 0.55f))
+                            } else {
+                                null
+                            },
+                            modifier = Modifier.semantics {
+                                contentDescription = cdText
+                            },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Icon(
+                                    imageVector = if (revealFilteredSlop) {
+                                        Icons.Outlined.Visibility
+                                    } else {
+                                        Icons.Outlined.VisibilityOff
+                                    },
+                                    contentDescription = null,
+                                    tint = if (revealFilteredSlop) {
+                                        headerAccent
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Text(
+                                    text = "$qualityFilteredCount",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (revealFilteredSlop) {
+                                        headerAccent
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                )
+                            }
+                        }
+                    }
                     if (showScrollTop) {
                         IconButton(
                             onClick = { scrollWebToTop() },
@@ -1404,9 +1498,14 @@ fun XWebFeedScreen(
                             scope = scope,
                             isAiEnabled = {
                                 liveFilterSettings.value.forYouQualityFilter ==
-                                    org.evergreenlabs.robin.xfilter.ForYouQualityFilterMode.AI
+                                    ForYouQualityFilterMode.AI
                             },
                             getWebView = { webViewRef },
+                            onQualityStatus = { active, count, revealed ->
+                                qualityFilterActive = active
+                                qualityFilteredCount = count
+                                revealFilteredSlop = revealed
+                            },
                         ),
                         "RobinFeedFilter",
                     )

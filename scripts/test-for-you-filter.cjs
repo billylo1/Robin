@@ -278,6 +278,7 @@ function createSandbox(settings, pathname = "/home") {
   htmlEl.appendChild(bodyEl);
 
   const aiBatches = [];
+  const qualityStatuses = [];
   const fetchResolvers = [];
   const docListeners = {};
 
@@ -319,7 +320,22 @@ function createSandbox(settings, pathname = "/home") {
       search: "",
       hash: "",
     },
-    history: { pushState() {}, replaceState() {} },
+    history: {
+      pushState(_state, _title, nextUrl) {
+        if (nextUrl) {
+          const u = new URL(String(nextUrl), "https://x.com");
+          windowObj.location.pathname = u.pathname;
+          windowObj.location.href = u.href;
+        }
+      },
+      replaceState(_state, _title, nextUrl) {
+        if (nextUrl) {
+          const u = new URL(String(nextUrl), "https://x.com");
+          windowObj.location.pathname = u.pathname;
+          windowObj.location.href = u.href;
+        }
+      },
+    },
     navigator: { userAgent: "" },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
@@ -336,6 +352,15 @@ function createSandbox(settings, pathname = "/home") {
         robinFeedFilter: {
           postMessage(payload) {
             aiBatches.push(payload);
+          },
+        },
+        robinFeedQualityStatus: {
+          postMessage(payload) {
+            qualityStatuses.push({
+              active: Boolean(payload.active),
+              count: Number(payload.count),
+              revealed: Boolean(payload.revealed),
+            });
           },
         },
       },
@@ -366,7 +391,7 @@ function createSandbox(settings, pathname = "/home") {
   );
   vm.runInNewContext(src, windowObj);
 
-  return { windowObj, bodyEl, document, aiBatches, fetchResolvers };
+  return { windowObj, bodyEl, document, aiBatches, qualityStatuses, fetchResolvers };
 }
 
 async function runTests() {
@@ -989,6 +1014,122 @@ async function runTests() {
       { id: "8006", handle: "split_prob_agg", reason: "non_human_aggregator", accountWide: false },
     ],
     "Per-category thresholds and aggregator-only 1-strike accountWide must match spec"
+  );
+
+  // 9. Show/hide filtered slop toggle, reason labels, count status, tab switch & route transitions
+  const revEnv = createSandbox({
+    forceFollowing: false,
+    hideForYouTab: false,
+    preferLatest: false,
+    forYouQualityFilter: "ai",
+  });
+  const revTabList = createMockElement("div", { role: "tablist" });
+  const revTabForYou = createMockElement("div", { role: "tab", "aria-selected": "true" });
+  revTabForYou.textContent = "For you";
+  const revTabFollowing = createMockElement("div", { role: "tab", "aria-selected": "false" });
+  revTabFollowing.textContent = "Following";
+  revTabList.appendChild(revTabForYou);
+  revTabList.appendChild(revTabFollowing);
+  revEnv.bodyEl.appendChild(revTabList);
+
+  const revBaitCell = createTweetCell("bait_9", "9001", 'Comment "AI" and I\'ll DM you!');
+  const revAggCell = createTweetCell("agg_9", "9002", "Repacked clip via aggregator");
+  const revHumanCell = createTweetCell("human_9", "9003", "Building an open-source iOS feed reader.");
+  revEnv.bodyEl.appendChild(revBaitCell);
+  revEnv.bodyEl.appendChild(revAggCell);
+  revEnv.bodyEl.appendChild(revHumanCell);
+
+  const rp = revEnv.windowObj.fetch("https://x.com/i/api/graphql/abc123/HomeTimeline?variables=%7B%7D");
+  revEnv.fetchResolvers[0].resolve({
+    clone: () => ({
+      text: async () =>
+        JSON.stringify({
+          data: {
+            home: {
+              home_timeline_urt: {
+                instructions: [
+                  {
+                    entries: [
+                      makeGraphQLEntry({ id: "9001", handle: "bait_9", text: 'Comment "AI" and I\'ll DM you!' }),
+                      makeGraphQLEntry({ id: "9002", handle: "agg_9", text: "Repacked clip via aggregator" }),
+                      makeGraphQLEntry({ id: "9003", handle: "human_9", text: "Building an open-source iOS feed reader." }),
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        }),
+    }),
+  });
+  await rp;
+  await new Promise((r) => setImmediate(r));
+
+  revEnv.windowObj.__ROBIN_APPLY_FEED_FILTER__({
+    keptIds: ["9003"],
+    hidden: [{ id: "9002", handle: "agg_9", reason: "non_human_aggregator", accountWide: false }],
+  });
+
+  assert.deepStrictEqual(
+    revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
+    { active: true, count: 2, revealed: false },
+    "Status handler must report active=true, count=2, revealed=false after Tier 1 + Tier 2 hides"
+  );
+
+  // Toggle reveal ON
+  revEnv.windowObj.__ROBIN_SET_REVEAL_SLOP__(true);
+  assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-hide"), null, "Reveal ON removes quality hide attr on Tier 1 cell");
+  assert.strictEqual(revBaitCell.style.display, "", "Reveal ON restores display on Tier 1 cell");
+  assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-revealed"), "1");
+  assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-label"), "Filtered \u00b7 Engagement bait");
+
+  assert.strictEqual(revAggCell.getAttribute("data-mt-quality-hide"), null, "Reveal ON removes quality hide attr on AI cell");
+  assert.strictEqual(revAggCell.style.display, "", "Reveal ON restores display on AI cell");
+  assert.strictEqual(revAggCell.getAttribute("data-mt-quality-revealed"), "1");
+  assert.strictEqual(revAggCell.getAttribute("data-mt-quality-label"), "Filtered \u00b7 Aggregator");
+  assert.strictEqual(revHumanCell.getAttribute("data-mt-quality-revealed"), null, "Human post must not be marked revealed");
+  assert.deepStrictEqual(
+    revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
+    { active: true, count: 2, revealed: true },
+    "Status handler must report revealed=true when toggled ON"
+  );
+
+  // Toggle reveal OFF
+  revEnv.windowObj.__ROBIN_SET_REVEAL_SLOP__(false);
+  assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-hide"), "1");
+  assert.strictEqual(revBaitCell.style.display, "none");
+  assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-revealed"), null);
+  assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-label"), null);
+  assert.strictEqual(revAggCell.getAttribute("data-mt-quality-hide"), "1");
+  assert.strictEqual(revAggCell.style.display, "none");
+  assert.deepStrictEqual(
+    revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
+    { active: true, count: 2, revealed: false },
+    "Status handler must report revealed=false when toggled OFF"
+  );
+
+  // Route navigation to status permalink hides button (active=false), back to /home restores count
+  revEnv.windowObj.history.pushState({}, "", "/human_9/status/999");
+  assert.deepStrictEqual(
+    revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
+    { active: false, count: 0, revealed: false },
+    "Status permalink must deactivate quality status"
+  );
+  revEnv.windowObj.history.pushState({}, "", "/home");
+  assert.deepStrictEqual(
+    revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
+    { active: true, count: 2, revealed: false },
+    "Returning to /home must restore active=true and filtered count"
+  );
+
+  // Tab switch to Following resets status to inactive / count 0
+  revTabForYou.setAttribute("aria-selected", "false");
+  revTabFollowing.setAttribute("aria-selected", "true");
+  revEnv.document.dispatchMockEvent("click", { target: revTabFollowing });
+  assert.deepStrictEqual(
+    revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
+    { active: false, count: 0, revealed: false },
+    "Switching to Following tab must reset quality status"
   );
 
   console.log("ALL FOR YOU QUALITY FILTER TESTS PASSED!");
