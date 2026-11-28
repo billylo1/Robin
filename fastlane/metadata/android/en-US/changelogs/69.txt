@@ -1,0 +1,1 @@
+Fixed the Refresh button to reload the current view or tab in place instead of returning to Following, and improved Smart (AI) quality filtering so hiding low-quality posts no longer causes unexpected scroll jumps or blank screens.

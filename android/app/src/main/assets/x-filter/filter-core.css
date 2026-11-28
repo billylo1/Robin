@@ -256,6 +256,24 @@ article[data-testid="tweet"].robin-factcheck-pulse {
   }
 }
 
+/* Quality-filtered slop posts: keep cellInnerDiv in layout at 1px so X's
+   VirtualScroller ResizeObserver receives a valid (>0px) height and packs
+   subsequent translateY cells cleanly without blank voids or bogus rects. */
+[data-testid="cellInnerDiv"][data-mt-quality-hide="1"] {
+  height: 1px !important;
+  min-height: 0 !important;
+  max-height: 1px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+[data-testid="cellInnerDiv"][data-mt-quality-hide="1"] > * {
+  display: none !important;
+}
+
 /* Revealed slop posts (user tapped show-filtered toggle) */
 [data-testid="cellInnerDiv"][data-mt-quality-revealed="1"] {
   border-left: 3px solid rgba(217, 119, 6, 0.78) !important;

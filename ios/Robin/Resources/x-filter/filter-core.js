@@ -153,7 +153,14 @@
           dispatchQualityAiBatches(batch, stats);
         }
       }
-      if (typeof hideQualityPosts === "function") hideQualityPosts(document, true);
+      if (typeof hideQualityPosts === "function") {
+        if (scrolling) {
+          qualityApplyPendingAfterScroll = true;
+          if (typeof reportQualityStatus === "function") reportQualityStatus();
+        } else {
+          hideQualityPosts(document, true);
+        }
+      }
     } catch (e) {}
   }
 
@@ -234,6 +241,8 @@
   var qualityHandleReason = {};
   var qualityCurrentFeedHiddenIds = {};
   var qualityRevealSlop = false;
+  var qualityApplyPendingAfterScroll = false;
+  var scrollerNudgeScheduled = false;
   var lastReportedQualityStatus = "";
   var lastQualityFeedKey = isQualityFeedPath()
     ? isHomePath()
@@ -924,6 +933,171 @@
     return true;
   }
 
+  var RELOAD_HOME_TAB_KEY = "robin_reload_home_tab";
+  var RELOAD_HOME_TAB_TTL_MS = 15000;
+  var lastSelectedHomeTabLabel = "";
+  var pendingReloadTab = null;
+  var pendingReloadTabDone = false;
+  var restoringReloadTab = false;
+  var lastRestoreTabClick = 0;
+
+  function clearPendingReloadTab() {
+    pendingReloadTab = null;
+    pendingReloadTabDone = true;
+    try {
+      if (window.sessionStorage && window.sessionStorage.removeItem) {
+        window.sessionStorage.removeItem(RELOAD_HOME_TAB_KEY);
+      }
+    } catch (e) {}
+  }
+
+  function activePendingReloadTab() {
+    if (!pendingReloadTab || pendingReloadTabDone) return null;
+    if (!isHomePath() || Date.now() - pendingReloadTab.ts >= RELOAD_HOME_TAB_TTL_MS) {
+      clearPendingReloadTab();
+      return null;
+    }
+    return pendingReloadTab;
+  }
+
+  (function initPendingReloadTab() {
+    try {
+      if (!window.sessionStorage || !window.sessionStorage.getItem) return;
+      if (!isHomePath()) {
+        if (window.sessionStorage.removeItem) {
+          window.sessionStorage.removeItem(RELOAD_HOME_TAB_KEY);
+        }
+        return;
+      }
+      var raw = window.sessionStorage.getItem(RELOAD_HOME_TAB_KEY);
+      if (!raw) return;
+      var parsed = JSON.parse(raw);
+      var label =
+        parsed && typeof parsed.label === "string"
+          ? parsed.label.replace(/\s+/g, " ").trim().toLowerCase()
+          : "";
+      var ts = parsed && typeof parsed.ts === "number" ? parsed.ts : 0;
+      var age = Date.now() - ts;
+      if (label && age >= 0 && age < RELOAD_HOME_TAB_TTL_MS) {
+        pendingReloadTab = { label: label, ts: ts };
+      } else if (window.sessionStorage.removeItem) {
+        window.sessionStorage.removeItem(RELOAD_HOME_TAB_KEY);
+      }
+    } catch (e) {
+      try {
+        if (window.sessionStorage && window.sessionStorage.removeItem) {
+          window.sessionStorage.removeItem(RELOAD_HOME_TAB_KEY);
+        }
+      } catch (e2) {}
+    }
+  })();
+
+  function currentSelectedHomeTabLabel() {
+    var scrollSnapSelected = document.querySelectorAll(
+      "div[data-testid='ScrollSnap-List'][role='tablist'] [role='tab'][aria-selected='true']"
+    );
+    for (var i = 0; i < scrollSnapSelected.length; i++) {
+      var snapLabel = tabNodeLabel(scrollSnapSelected[i]);
+      if (snapLabel) return snapLabel;
+    }
+
+    var otherSelected = document.querySelectorAll(
+      "div[role='tablist'] [role='tab'][aria-selected='true'], [role='tab'][aria-selected='true']"
+    );
+    for (var j = 0; j < otherSelected.length; j++) {
+      var el = otherSelected[j];
+      if (typeof el.getBoundingClientRect === "function") {
+        var r = el.getBoundingClientRect();
+        if (r && (r.top > 280 || (r.height === 0 && r.width === 0))) continue;
+      }
+      var otherLabel = tabNodeLabel(el);
+      if (otherLabel) return otherLabel;
+    }
+
+    var tabs = findHomeTabs();
+    if (tabs.following && isTabSelected(tabs.following)) {
+      var followingLabel = tabNodeLabel(tabs.following);
+      if (followingLabel) return followingLabel;
+    }
+    if (tabs.forYou && isTabSelected(tabs.forYou)) {
+      var forYouLabel = tabNodeLabel(tabs.forYou);
+      if (forYouLabel) return forYouLabel;
+    }
+
+    return lastSelectedHomeTabLabel || "";
+  }
+
+  function findHomeTabByLabel(targetLabel) {
+    var target = String(targetLabel || "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!target) return null;
+    var tablist = getTimelineTablist();
+    var nodes = tablist
+      ? tablist.querySelectorAll("div[role='tab'], a[role='tab'], [role='tab']")
+      : document.querySelectorAll("div[role='tab'], a[role='tab'], [role='tab']");
+    for (var i = 0; i < nodes.length; i++) {
+      var t = nodes[i];
+      if (!tablist && typeof t.getBoundingClientRect === "function") {
+        var r = t.getBoundingClientRect();
+        if (r && (r.top > 280 || (r.height === 0 && r.width === 0))) continue;
+      }
+      if (tabNodeLabel(t) === target) return t;
+    }
+    return null;
+  }
+
+  window.__ROBIN_PREPARE_RELOAD__ = function (preserveHomeTab) {
+    if (preserveHomeTab === false || !isHomePath()) {
+      clearPendingReloadTab();
+      return false;
+    }
+    var label = currentSelectedHomeTabLabel();
+    var settings = currentSettings();
+    if (
+      !label ||
+      (settings.forceFollowing && isFollowingLabel(label)) ||
+      (!settings.forceFollowing && isForYouLabel(label))
+    ) {
+      clearPendingReloadTab();
+      return false;
+    }
+    try {
+      if (window.sessionStorage && window.sessionStorage.setItem) {
+        window.sessionStorage.setItem(
+          RELOAD_HOME_TAB_KEY,
+          JSON.stringify({ label: label, ts: Date.now() })
+        );
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  };
+
+  function restoreReloadHomeTab() {
+    var pending = activePendingReloadTab();
+    if (!pending || !homeResponseSeen || isWelcomeInterstitial()) return;
+    var target = findHomeTabByLabel(pending.label);
+    if (!target) return;
+    window.__ROBIN_USER_PICKED_TAB__ = Date.now();
+    lastSelectedHomeTabLabel = pending.label;
+    var followingTarget = isFollowingLabel(pending.label);
+    if (isTabSelected(target)) {
+      window.__ROBIN_QUALITY_FEED_ACTIVE__ = !followingTarget;
+      if (!followingTarget) removeCaughtUpMarker();
+      clearPendingReloadTab();
+      if (typeof hideQualityPosts === "function") hideQualityPosts(document, false);
+      reportQualityStatus();
+      return;
+    }
+    var now = Date.now();
+    if (now - lastRestoreTabClick < 1500) return;
+    lastRestoreTabClick = now;
+    restoringReloadTab = true;
+    try {
+      target.click();
+    } catch (e) {}
+    restoringReloadTab = false;
+  }
+
   var lastFollowClick = 0;
   function forceFollowing() {
     // Port of changeFollowingTimeline (minimal-twitter).
@@ -931,6 +1105,7 @@
     if (!homeResponseSeen) return;
     if (isWelcomeInterstitial()) return;
     if (!settings.forceFollowing || !isHomePath()) return;
+    if (activePendingReloadTab()) return;
     if (window.__ROBIN_USER_PICKED_TAB__) return;
     var now = Date.now();
     if (now - lastFollowClick < 1500) return;
@@ -950,6 +1125,7 @@
     if (!homeResponseSeen) return;
     if (isWelcomeInterstitial()) return;
     if (settings.forceFollowing || !isHomePath()) return;
+    if (activePendingReloadTab()) return;
     if (window.__ROBIN_USER_PICKED_TAB__) return;
     var now = Date.now();
     if (now - lastFollowClick < 1500) return;
@@ -1070,6 +1246,15 @@
     if (!settings.preferLatest || !isHomePath()) return;
     // Reverse-chron sort only applies to Following, not For You.
     if (!settings.forceFollowing) {
+      window.__ROBIN_LATEST_OK__ = true;
+      return;
+    }
+    var pendingTab = activePendingReloadTab();
+    if (pendingTab && !isFollowingLabel(pendingTab.label)) {
+      window.__ROBIN_LATEST_OK__ = true;
+      return;
+    }
+    if (window.__ROBIN_USER_PICKED_TAB__ && !isFollowingFeedActive()) {
       window.__ROBIN_LATEST_OK__ = true;
       return;
     }
@@ -1385,13 +1570,49 @@
     return m ? m[1] : "";
   }
 
+  function ensureQualityCssActive() {
+    if (document.getElementById && document.getElementById("robin-quality-css")) return;
+    var mainCss = document.getElementById && document.getElementById("robin-x-filter-css");
+    if (!mainCss || !mainCss.disabled) return;
+    try {
+      var s = document.createElement("style");
+      s.id = "robin-quality-css";
+      s.textContent =
+        '[data-testid="cellInnerDiv"][data-mt-quality-hide="1"]{height:1px !important;min-height:0 !important;max-height:1px !important;padding:0 !important;margin:0 !important;border:0 !important;overflow:hidden !important;opacity:0 !important;pointer-events:none !important;}' +
+        '[data-testid="cellInnerDiv"][data-mt-quality-hide="1"] > *{display:none !important;}';
+      var parent = document.head || document.documentElement;
+      if (parent && parent.appendChild) parent.appendChild(s);
+    } catch (e) {}
+  }
+
+  function nudgeVirtualScroller() {
+    if (scrollerNudgeScheduled) return;
+    scrollerNudgeScheduled = true;
+    function run() {
+      scrollerNudgeScheduled = false;
+      if (scrolling) return;
+      try {
+        var s = window.scroller;
+        if (s && typeof s._update === "function") {
+          s._update();
+        }
+      } catch (e) {}
+    }
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(run);
+      });
+    } else {
+      setTimeout(run, 0);
+    }
+  }
+
   function updateCellHideDisplay(el) {
     if (!el || !el.style) return;
     var hide =
       el.getAttribute("data-mt-robin-hide") === "1" ||
       el.getAttribute("data-mt-keyword-hide") === "1" ||
-      el.getAttribute("data-mt-language-hide") === "1" ||
-      el.getAttribute("data-mt-quality-hide") === "1";
+      el.getAttribute("data-mt-language-hide") === "1";
     if (hide) {
       el.style.setProperty("display", "none", "important");
     } else {
@@ -1407,23 +1628,32 @@
     el.removeAttribute("data-mt-quality-hide");
     el.removeAttribute("data-mt-quality-revealed");
     el.removeAttribute("data-mt-quality-label");
+    el.removeAttribute("aria-hidden");
     updateCellHideDisplay(el);
+    if (hadHide) nudgeVirtualScroller();
   }
 
   function markQualityHide(el) {
     if (!el) return;
+    var wasHidden = el.getAttribute("data-mt-quality-hide") === "1";
+    ensureQualityCssActive();
     el.removeAttribute("data-mt-quality-revealed");
     el.removeAttribute("data-mt-quality-label");
     el.setAttribute("data-mt-quality-hide", "1");
+    el.setAttribute("aria-hidden", "true");
     updateCellHideDisplay(el);
+    if (!wasHidden) nudgeVirtualScroller();
   }
 
   function markQualityRevealed(el, reason) {
     if (!el) return;
+    var hadHide = el.getAttribute("data-mt-quality-hide") === "1";
     el.removeAttribute("data-mt-quality-hide");
+    el.removeAttribute("aria-hidden");
     el.setAttribute("data-mt-quality-revealed", "1");
     el.setAttribute("data-mt-quality-label", qualityReasonLabel(reason));
     updateCellHideDisplay(el);
+    if (hadHide) nudgeVirtualScroller();
   }
 
   function statusIdFromCell(cell) {
@@ -1449,11 +1679,28 @@
     return m ? m[1].toLowerCase() : "";
   }
 
-  function cellIsAboveViewport(cell) {
+  function cellIsProtectedForScroll(cell) {
     if (!cell || typeof cell.getBoundingClientRect !== "function") return false;
+    if (cell.getAttribute && cell.getAttribute("data-mt-quality-hide") === "1") {
+      return false;
+    }
     try {
       var rect = cell.getBoundingClientRect();
-      return rect && typeof rect.bottom === "number" && rect.bottom < 0;
+      if (!rect || typeof rect.top !== "number" || typeof rect.bottom !== "number") {
+        return false;
+      }
+      if (rect.height === 0 && rect.width === 0) return false;
+      if (rect.top < 0 || rect.bottom <= 0) return true;
+      var viewportH =
+        window.innerHeight ||
+        (document.documentElement && document.documentElement.clientHeight) ||
+        800;
+      var scrollY = Math.max(
+        window.scrollY || 0,
+        typeof currentFeedScrollY === "function" ? currentFeedScrollY() : 0
+      );
+      if (scrollY > 4 && rect.top < viewportH) return true;
+      return false;
     } catch (e) {
       return false;
     }
@@ -1508,7 +1755,7 @@
       markQualityRevealed(cell, reason);
       return false;
     }
-    if (protectScroll && cellIsAboveViewport(cell)) {
+    if (protectScroll && cellIsProtectedForScroll(cell)) {
       cell.removeAttribute("data-mt-quality-revealed");
       cell.removeAttribute("data-mt-quality-label");
       return false;
@@ -1583,7 +1830,12 @@
           qualityHandleReason[h] = reason;
         }
       }
-      hideQualityPosts(document, true);
+      if (scrolling) {
+        qualityApplyPendingAfterScroll = true;
+        reportQualityStatus();
+      } else {
+        hideQualityPosts(document, true);
+      }
     } catch (e) {}
   };
 
@@ -2299,10 +2551,13 @@
   }
 
   function onUserTabClick(ev) {
+    if (restoringReloadTab) return;
     var t = ev.target && ev.target.closest && ev.target.closest('[role="tab"]');
     if (!t || !isHomePath()) return;
+    clearPendingReloadTab();
     window.__ROBIN_USER_PICKED_TAB__ = Date.now();
     var label = tabNodeLabel(t);
+    lastSelectedHomeTabLabel = label;
     var followingPicked = isFollowingLabel(label);
     resetQualityFeedView();
     window.__ROBIN_QUALITY_FEED_ACTIVE__ = !followingPicked;
@@ -2664,6 +2919,15 @@
   }
 
   function isHomeTabSettled() {
+    var pending = activePendingReloadTab();
+    if (pending) {
+      var target = findHomeTabByLabel(pending.label);
+      if (!target) {
+        return Date.now() - bootStart >= BOOT_FOLLOWING_SETTLE_MS;
+      }
+      return isTabSelected(target);
+    }
+    if (window.__ROBIN_USER_PICKED_TAB__) return true;
     var settings = currentSettings();
     var tabs = findHomeTabs();
     if (settings.forceFollowing) {
@@ -2860,7 +3124,8 @@
     if (cell) {
       if (
         cell.getAttribute &&
-        cell.getAttribute("data-mt-robin-hide") === "1"
+        (cell.getAttribute("data-mt-robin-hide") === "1" ||
+          cell.getAttribute("data-mt-quality-hide") === "1")
       ) {
         return true;
       }
@@ -3221,7 +3486,7 @@
     var settings = currentSettings();
 
     // 1b. For You quality filter (Tier 0 cache + Tier 1 heuristics + Tier 2 AI verdicts)
-    if (applyQualityCellState(cell, settings, false)) {
+    if (applyQualityCellState(cell, settings, true)) {
       return;
     }
 
@@ -3313,6 +3578,7 @@
   function tick() {
     syncPageHeaderFlags();
     applyFontScale();
+    restoreReloadHomeTab();
     forceFollowing();
     forceForYou();
     hideForYouTab();
@@ -3357,7 +3623,7 @@
           hideLiveContentBlocks(n);
           hideKeywordPosts(n);
           hideLanguagePosts(n);
-          hideQualityPosts(n, false);
+          hideQualityPosts(n, true);
         }
       }
       if (work.length > limit) {
@@ -3536,6 +3802,10 @@
     clearTimeout(scrollIdleTimer);
     scrollIdleTimer = setTimeout(function () {
       scrolling = false;
+      if (qualityApplyPendingAfterScroll) {
+        qualityApplyPendingAfterScroll = false;
+        hideQualityPosts(document, true);
+      }
       // The tap snapshot has to survive the open post (its scroller is not
       // the feed) and the pin itself. Replacing it with scrollY here is what
       // left the feed short by the home-tab row: that row is removed on the

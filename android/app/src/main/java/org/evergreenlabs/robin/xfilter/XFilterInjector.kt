@@ -133,8 +133,17 @@ object XFilterInjector {
         webView: WebView,
         settings: FilterSettings,
         fontScale: Float = 1f,
+        resetPickedTab: Boolean = false,
     ) {
         val json = settings.toJsonObjectLiteral(fontScale)
+        val resetPickedTabJs = if (resetPickedTab) {
+            """
+            window.__ROBIN_USER_PICKED_TAB__ = 0;
+            try { sessionStorage.removeItem('robin_reload_home_tab'); } catch (eTab) {}
+            """.trimIndent()
+        } else {
+            ""
+        }
         webView.evaluateJavascript(
             """
             window.__ROBIN_SETTINGS__ = $json;
@@ -148,7 +157,7 @@ object XFilterInjector {
                 } catch (e) {}
                 return;
               }
-              window.__ROBIN_USER_PICKED_TAB__ = 0;
+              $resetPickedTabJs
               var cfg = window.__ROBIN_SETTINGS__ || {};
               var s = document.getElementById('robin-x-filter-css');
               if (s) s.disabled = !cfg.hidePromoted;

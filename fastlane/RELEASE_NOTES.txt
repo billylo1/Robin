@@ -1,3 +1,4 @@
+Fixed the Refresh button to reload the current view or tab in place instead of returning to Following, and improved Smart (AI) quality filtering so hiding low-quality posts no longer causes unexpected scroll jumps or blank screens.
 Expanded Smart (AI) quality filtering to evaluate factual credibility and argument validity, hiding demonstrably unfactual claims and flawed arguments while preserving opinions, humor, and recent news.
 Added a header toggle button to show or hide filtered low-quality posts with the filtered count.
 Improved Smart (AI) quality filtering for For You, Lists, Communities, and Topics feeds with better long-post context, mention-spam detection, instant tab-switch updates, and 2-strike repeat-offender caching.

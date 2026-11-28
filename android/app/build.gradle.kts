@@ -95,8 +95,8 @@ android {
         applicationId = "org.evergreenlabs.robin"
         minSdk = 33
         targetSdk = 36
-        versionCode = 68
-        versionName = "0.2.39"
+        versionCode = 69
+        versionName = "0.2.40"
         buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
         buildConfigField("String", "APTABASE_APP_KEY", "\"$aptabaseAppKey\"")
         buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")

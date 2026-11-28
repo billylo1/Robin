@@ -38,6 +38,16 @@ private func isFeedHome(_ url: URL?) -> Bool {
     return path.isEmpty || path == "/" || path == "/home" || path.hasPrefix("/home/")
 }
 
+private func isReloadableURL(_ url: URL?) -> Bool {
+    guard let url,
+          let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
+          let host = url.host,
+          !host.isEmpty
+    else { return false }
+    return true
+}
+
 /// Login / SSO pages we never want to re-enter via WebView back.
 private func isAuthFlow(_ url: URL?) -> Bool {
     guard let s = url?.absoluteString.lowercased() else { return false }
@@ -167,6 +177,7 @@ struct XWebFeedView: View {
     @State private var qualityFilterActive = false
     @State private var qualityFilteredCount = 0
     @State private var revealFilteredSlop = false
+    @State private var reloadGen = 0
 
     private static let scrollTopThreshold: CGFloat = 400
     private static let nearTopThreshold: CGFloat = 80
@@ -298,7 +309,7 @@ struct XWebFeedView: View {
         .sheet(item: $activeFactCheck) { req in
             FactCheckSheet(request: req)
         }
-        .onChange(of: filterStore.settings) { _, newSettings in
+        .onChange(of: filterStore.settings) { oldSettings, newSettings in
             if newSettings.forYouQualityFilter == .off {
                 qualityFilterActive = false
                 qualityFilteredCount = 0
@@ -308,7 +319,8 @@ struct XWebFeedView: View {
             XFilterInjector.applySettingsOnly(
                 to: webView,
                 settings: newSettings,
-                fontScale: fontScale.scale
+                fontScale: fontScale.scale,
+                resetPickedTab: oldSettings.forceFollowing != newSettings.forceFollowing
             )
         }
         .onChange(of: fontScale.scale) { _, newScale in
@@ -472,7 +484,7 @@ struct XWebFeedView: View {
             }
             .accessibilityLabel("New post")
             Button {
-                hardReloadFeed(warm: !showBootCover)
+                reloadCurrentView()
             } label: {
                 Image(systemName: "arrow.clockwise")
                     .foregroundStyle(.primary)
@@ -592,7 +604,7 @@ struct XWebFeedView: View {
         // Pill auto-click already handles “Show N posts” when X paints it.
         // Host-driven refresh must force a network fetch — SPA reload() often
         // serves a cached document and leaves the same stale Following posts.
-        hardReloadFeed(warm: true)
+        hardReloadFeed(warm: true, preserveHomeTab: true)
     }
 
     private func startNearTopPollIfNeeded() {
@@ -670,34 +682,93 @@ struct XWebFeedView: View {
         }
     }
 
-    private func hardReloadFeed(warm: Bool, markRefresh: Bool = true) {
+    private func reloadCurrentView() {
+        noteUserInteraction()
         guard let webView else { return }
+        guard let currentURL = (isReloadableURL(webView.url) ? webView.url : nil)
+            ?? (isReloadableURL(pageURL) ? pageURL : nil)
+        else {
+            hardReloadFeed(warm: !showBootCover, preserveHomeTab: false)
+            return
+        }
+        if isFeedHome(currentURL) {
+            hardReloadFeed(
+                warm: !showBootCover,
+                markRefresh: true,
+                targetURL: currentURL,
+                preserveHomeTab: true
+            )
+            return
+        }
+        reloadGen += 1
+        qualityFilteredCount = 0
+        revealFilteredSlop = false
+        cancelWarmReloadTask()
+        suppressNextHomeBootCover = false
+        updateUserScripts(webView: webView, settings: filterStore.settings, fontScale: fontScale.scale)
+        if isReloadableURL(webView.url) {
+            webView.reloadFromOrigin()
+        } else {
+            let request = URLRequest(
+                url: currentURL,
+                cachePolicy: .reloadIgnoringLocalCacheData,
+                timeoutInterval: 60
+            )
+            webView.load(request)
+        }
+    }
+
+    private func hardReloadFeed(
+        warm: Bool,
+        markRefresh: Bool = true,
+        targetURL: URL = xHomeURL,
+        preserveHomeTab: Bool = false
+    ) {
+        guard let webView else { return }
+        reloadGen += 1
+        let gen = reloadGen
         if markRefresh { lastFeedRefreshAt = Date() }
         welcomeAutoRetryUsed = false
         qualityFilteredCount = 0
         revealFilteredSlop = false
         cancelWarmReloadTask()
+        updateUserScripts(webView: webView, settings: filterStore.settings, fontScale: fontScale.scale)
 
-        let request = URLRequest(
-            url: xHomeURL,
-            cachePolicy: .reloadIgnoringLocalCacheData,
-            timeoutInterval: 60
-        )
-
-        if warm {
-            suppressNextHomeBootCover = true
-            warmReloadTask = Task { @MainActor in
-                webView.load(request)
-                try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
-                guard !Task.isCancelled else { return }
+        @MainActor
+        func startLoad() {
+            guard gen == reloadGen else { return }
+            let request = URLRequest(
+                url: targetURL,
+                cachePolicy: .reloadIgnoringLocalCacheData,
+                timeoutInterval: 60
+            )
+            if warm {
+                suppressNextHomeBootCover = true
+                warmReloadTask = Task { @MainActor in
+                    webView.load(request)
+                    try? await Task.sleep(nanoseconds: Self.bootCoverTimeoutNs)
+                    guard !Task.isCancelled else { return }
+                    suppressNextHomeBootCover = false
+                }
+            } else {
                 suppressNextHomeBootCover = false
+                showBootCover = true
+                armBootCoverTimeout()
+                webView.load(request)
+            }
+        }
+
+        if !showBootCover {
+            let preserveLiteral = preserveHomeTab ? "true" : "false"
+            webView.evaluateJavaScript(
+                "window.__ROBIN_PREPARE_RELOAD__ && window.__ROBIN_PREPARE_RELOAD__(\(preserveLiteral));"
+            ) { _, _ in
+                Task { @MainActor in
+                    startLoad()
+                }
             }
         } else {
-            suppressNextHomeBootCover = false
-            updateUserScripts(webView: webView, settings: filterStore.settings, fontScale: fontScale.scale)
-            showBootCover = true
-            armBootCoverTimeout()
-            webView.load(request)
+            startLoad()
         }
     }
 
@@ -731,7 +802,7 @@ struct XWebFeedView: View {
         guard isFeedHome(pageURL) else { return }
         cancelWarmReloadTask()
         pendingFeedSettingsReload = false
-        hardReloadFeed(warm: false, markRefresh: false)
+        hardReloadFeed(warm: false, markRefresh: false, preserveHomeTab: false)
     }
 
     private func toggleRevealFilteredSlop() {

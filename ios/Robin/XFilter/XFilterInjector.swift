@@ -210,9 +210,16 @@ enum XFilterInjector {
     static func applySettingsOnly(
         to webView: WKWebView,
         settings: FilterSettings,
-        fontScale: Double = 1
+        fontScale: Double = 1,
+        resetPickedTab: Bool = false
     ) {
         let json = settings.toJSONObjectLiteral(fontScale: fontScale)
+        let resetPickedTabJS = resetPickedTab
+            ? """
+            window.__ROBIN_USER_PICKED_TAB__ = 0;
+            try { sessionStorage.removeItem('robin_reload_home_tab'); } catch (eTab) {}
+            """
+            : ""
         let script = """
         window.__ROBIN_SETTINGS__ = \(json);
         (function(){
@@ -225,7 +232,7 @@ enum XFilterInjector {
             } catch (e) {}
             return;
           }
-          window.__ROBIN_USER_PICKED_TAB__ = 0;
+          \(resetPickedTabJS)
           var cfg = window.__ROBIN_SETTINGS__ || {};
           var s = document.getElementById('robin-x-filter-css');
           if (s) s.disabled = !cfg.hidePromoted;

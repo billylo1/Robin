@@ -116,6 +116,12 @@ function createMockElement(tagName, attrs = {}) {
     },
     addEventListener() {},
     removeEventListener() {},
+    clickCount: 0,
+    onClick: null,
+    click() {
+      elem.clickCount += 1;
+      if (typeof elem.onClick === "function") elem.onClick(elem);
+    },
   };
   return elem;
 }
@@ -270,7 +276,7 @@ function makeGraphQLEntry({
   };
 }
 
-function createSandbox(settings, pathname = "/home") {
+function createSandbox(settings, pathname = "/home", sharedSessionMap = null) {
   const htmlEl = createMockElement("html");
   const headEl = createMockElement("head");
   const bodyEl = createMockElement("body");
@@ -279,8 +285,10 @@ function createSandbox(settings, pathname = "/home") {
 
   const aiBatches = [];
   const qualityStatuses = [];
+  const bootEvents = [];
   const fetchResolvers = [];
   const docListeners = {};
+  const sessionMap = sharedSessionMap instanceof Map ? sharedSessionMap : new Map();
 
   class MockXHR {
     open(method, url) {
@@ -338,7 +346,15 @@ function createSandbox(settings, pathname = "/home") {
     },
     navigator: { userAgent: "" },
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
-    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: {
+      getItem: (k) => (sessionMap.has(String(k)) ? sessionMap.get(String(k)) : null),
+      setItem: (k, v) => {
+        sessionMap.set(String(k), String(v));
+      },
+      removeItem: (k) => {
+        sessionMap.delete(String(k));
+      },
+    },
     getComputedStyle: () => ({ display: "block", visibility: "visible", position: "static" }),
     __ROBIN_SETTINGS__: settings,
     XMLHttpRequest: MockXHR,
@@ -349,6 +365,11 @@ function createSandbox(settings, pathname = "/home") {
     },
     webkit: {
       messageHandlers: {
+        mtBoot: {
+          postMessage(nonce) {
+            bootEvents.push(nonce);
+          },
+        },
         robinFeedFilter: {
           postMessage(payload) {
             aiBatches.push(payload);
@@ -391,7 +412,16 @@ function createSandbox(settings, pathname = "/home") {
   );
   vm.runInNewContext(src, windowObj);
 
-  return { windowObj, bodyEl, document, aiBatches, qualityStatuses, fetchResolvers };
+  return {
+    windowObj,
+    bodyEl,
+    document,
+    aiBatches,
+    qualityStatuses,
+    bootEvents,
+    fetchResolvers,
+    sessionMap,
+  };
 }
 
 async function runTests() {
@@ -523,7 +553,8 @@ async function runTests() {
 
   assert.strictEqual(cellCreator5Tags.getAttribute("data-mt-quality-hide"), null, "AI-kept post must stay visible");
   assert.strictEqual(cellAggregatorAI.getAttribute("data-mt-quality-hide"), "1", "AI-hidden post in viewport must be hidden");
-  assert.strictEqual(cellAggregatorAI.style.display, "none", "Hidden cell must have display:none");
+  assert.strictEqual(cellAggregatorAI.style.display, "", "Hidden cell must keep layout box for X VirtualScroller");
+  assert.strictEqual(cellAggregatorAI.getAttribute("aria-hidden"), "true", "Hidden cell must have aria-hidden=true");
   assert.strictEqual(cellAboveViewport.getAttribute("data-mt-quality-hide"), null, "Above-viewport cell must not collapse immediately (scroll-jump protection)");
 
   // Verify accountWide cache hides a brand-new post from Rainmaker1973 immediately without another AI call
@@ -1116,6 +1147,7 @@ async function runTests() {
   // Toggle reveal ON
   revEnv.windowObj.__ROBIN_SET_REVEAL_SLOP__(true);
   assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-hide"), null, "Reveal ON removes quality hide attr on Tier 1 cell");
+  assert.strictEqual(revBaitCell.getAttribute("aria-hidden"), null, "Reveal ON removes aria-hidden on Tier 1 cell");
   assert.strictEqual(revBaitCell.style.display, "", "Reveal ON restores display on Tier 1 cell");
   assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-revealed"), "1");
   assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-label"), "Filtered \u00b7 Engagement bait");
@@ -1136,11 +1168,13 @@ async function runTests() {
   // Toggle reveal OFF
   revEnv.windowObj.__ROBIN_SET_REVEAL_SLOP__(false);
   assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-hide"), "1");
-  assert.strictEqual(revBaitCell.style.display, "none");
+  assert.strictEqual(revBaitCell.style.display, "");
+  assert.strictEqual(revBaitCell.getAttribute("aria-hidden"), "true");
   assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-revealed"), null);
   assert.strictEqual(revBaitCell.getAttribute("data-mt-quality-label"), null);
   assert.strictEqual(revAggCell.getAttribute("data-mt-quality-hide"), "1");
-  assert.strictEqual(revAggCell.style.display, "none");
+  assert.strictEqual(revAggCell.style.display, "");
+  assert.strictEqual(revAggCell.getAttribute("aria-hidden"), "true");
   assert.deepStrictEqual(
     revEnv.qualityStatuses[revEnv.qualityStatuses.length - 1],
     { active: true, count: 4, revealed: false },
@@ -1170,6 +1204,412 @@ async function runTests() {
     { active: false, count: 0, revealed: false },
     "Switching to Following tab must reset quality status"
   );
+
+  // 9. Preserve non-default /home tabs across explicit reloads
+  function makeHomeTabStrip(selectedLabel) {
+    const tablist = createMockElement("div", {
+      "data-testid": "ScrollSnap-List",
+      role: "tablist",
+    });
+    const labels = ["For you", "Following", "AI News"];
+    const tabEls = {};
+    for (const lbl of labels) {
+      const tab = createMockElement("div", {
+        role: "tab",
+        "aria-selected": lbl === selectedLabel ? "true" : "false",
+      });
+      tab.textContent = lbl;
+      tab.onClick = () => {
+        for (const k of labels) {
+          tabEls[k].setAttribute("aria-selected", k === lbl ? "true" : "false");
+        }
+      };
+      tabEls[lbl] = tab;
+      tablist.appendChild(tab);
+    }
+    return { tablist, tabEls };
+  }
+
+  // 9a. Pinned list tab ("AI News") with forceFollowing=true is preserved across reload
+  {
+    const sharedSession = new Map();
+    const envBefore = createSandbox(
+      {
+        forceFollowing: true,
+        hideForYouTab: true,
+        hidePageHeader: false,
+        preferLatest: true,
+        forYouQualityFilter: "ai",
+      },
+      "/home",
+      sharedSession
+    );
+    const { tablist, tabEls } = makeHomeTabStrip("AI News");
+    envBefore.bodyEl.appendChild(tablist);
+    const prepared = envBefore.windowObj.__ROBIN_PREPARE_RELOAD__(true);
+    assert.strictEqual(prepared, true, "__ROBIN_PREPARE_RELOAD__(true) must persist non-default home tab");
+    assert(sharedSession.has("robin_reload_home_tab"), "sessionStorage must hold robin_reload_home_tab");
+
+    const envAfter = createSandbox(
+      {
+        forceFollowing: true,
+        hideForYouTab: true,
+        hidePageHeader: false,
+        preferLatest: true,
+        forYouQualityFilter: "ai",
+      },
+      "/home",
+      sharedSession
+    );
+    const afterStrip = makeHomeTabStrip("Following");
+    envAfter.bodyEl.appendChild(afterStrip.tablist);
+    const baitCellAfter = createTweetCell("hustle_10", "10001", 'Comment "AI" and I\'ll DM you!');
+    envAfter.bodyEl.appendChild(baitCellAfter);
+
+    const fetchPromise = envAfter.windowObj.fetch(
+      "https://x.com/i/api/graphql/xyz/HomeTimeline?variables=%7B%22enableRanking%22%3Atrue%7D"
+    );
+    envAfter.fetchResolvers[0].resolve({
+      clone() {
+        return {
+          text: async () =>
+            JSON.stringify({
+              data: {
+                home: {
+                  home_timeline_urt: {
+                    instructions: [
+                      {
+                        entries: [
+                          makeGraphQLEntry({
+                            id: "10001",
+                            handle: "hustle_10",
+                            text: 'Comment "AI" and I\'ll DM you!',
+                          }),
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+            }),
+        };
+      },
+    });
+    await fetchPromise;
+    // Simulate MutationObserver / rAF ticks after HomeTimeline response and tab switch
+    envAfter.windowObj.__ROBIN_ON_SETTINGS__();
+    envAfter.windowObj.__ROBIN_ON_SETTINGS__();
+    await new Promise((r) => setTimeout(r, 40));
+
+    assert.strictEqual(
+      afterStrip.tabEls["AI News"].getAttribute("aria-selected"),
+      "true",
+      "Reload must restore the AI News tab instead of forcing Following"
+    );
+    assert.strictEqual(
+      afterStrip.tabEls["Following"].clickCount,
+      0,
+      "forceFollowing must not click Following while restoring AI News"
+    );
+    assert(
+      envAfter.windowObj.__ROBIN_USER_PICKED_TAB__ > 0,
+      "Restored home tab must mark __ROBIN_USER_PICKED_TAB__"
+    );
+    assert.strictEqual(
+      envAfter.windowObj.__ROBIN_QUALITY_FEED_ACTIVE__,
+      true,
+      "Quality filtering must remain active on restored non-Following tab"
+    );
+    assert.strictEqual(
+      sharedSession.has("robin_reload_home_tab"),
+      false,
+      "robin_reload_home_tab must be cleared once the target tab is selected"
+    );
+    assert(
+      envAfter.bootEvents.length >= 1,
+      "Boot cover must lift cleanly after restoring non-default home tab"
+    );
+  }
+
+  // 9b. forceFollowing=false with Following selected restores Following instead of forcing For you
+  {
+    const sharedSession = new Map();
+    const envBefore = createSandbox(
+      {
+        forceFollowing: false,
+        hideForYouTab: false,
+        hidePageHeader: false,
+        preferLatest: false,
+        forYouQualityFilter: "ai",
+      },
+      "/home",
+      sharedSession
+    );
+    const { tablist } = makeHomeTabStrip("Following");
+    envBefore.bodyEl.appendChild(tablist);
+    assert.strictEqual(
+      envBefore.windowObj.__ROBIN_PREPARE_RELOAD__(true),
+      true,
+      "Following tab when forceFollowing=false must be preserved"
+    );
+
+    const envAfter = createSandbox(
+      {
+        forceFollowing: false,
+        hideForYouTab: false,
+        hidePageHeader: false,
+        preferLatest: false,
+        forYouQualityFilter: "ai",
+      },
+      "/home",
+      sharedSession
+    );
+    const afterStrip = makeHomeTabStrip("For you");
+    envAfter.bodyEl.appendChild(afterStrip.tablist);
+
+    const fetchPromise = envAfter.windowObj.fetch(
+      "https://x.com/i/api/graphql/xyz/HomeTimeline?variables=%7B%22enableRanking%22%3Atrue%7D"
+    );
+    envAfter.fetchResolvers[0].resolve({
+      clone() {
+        return { text: async () => JSON.stringify({ data: { home: { home_timeline_urt: { instructions: [] } } } }) };
+      },
+    });
+    await fetchPromise;
+    // Simulate MutationObserver / rAF ticks after HomeTimeline response and tab switch
+    envAfter.windowObj.__ROBIN_ON_SETTINGS__();
+    envAfter.windowObj.__ROBIN_ON_SETTINGS__();
+    await new Promise((r) => setTimeout(r, 40));
+
+    assert.strictEqual(
+      afterStrip.tabEls["Following"].getAttribute("aria-selected"),
+      "true",
+      "Reload must restore Following when user was on Following under forceFollowing=false"
+    );
+    assert.strictEqual(
+      afterStrip.tabEls["For you"].clickCount,
+      0,
+      "forceForYou must not override restored Following tab"
+    );
+  }
+
+  // 9c. Default tab already selected returns false and leaves sessionStorage clean
+  {
+    const sharedSession = new Map();
+    const envDefault = createSandbox(
+      { forceFollowing: true, hideForYouTab: true, preferLatest: true },
+      "/home",
+      sharedSession
+    );
+    const { tablist } = makeHomeTabStrip("Following");
+    envDefault.bodyEl.appendChild(tablist);
+    assert.strictEqual(
+      envDefault.windowObj.__ROBIN_PREPARE_RELOAD__(true),
+      false,
+      "Already-default Following tab must return false"
+    );
+    assert.strictEqual(
+      sharedSession.has("robin_reload_home_tab"),
+      false,
+      "Default tab must not store robin_reload_home_tab"
+    );
+  }
+
+  // 9d. __ROBIN_PREPARE_RELOAD__(false) clears any preserved tab (Settings reload)
+  {
+    const sharedSession = new Map();
+    const envSettings = createSandbox(
+      { forceFollowing: true, hidePageHeader: false, preferLatest: true },
+      "/home",
+      sharedSession
+    );
+    const { tablist } = makeHomeTabStrip("AI News");
+    envSettings.bodyEl.appendChild(tablist);
+    assert.strictEqual(envSettings.windowObj.__ROBIN_PREPARE_RELOAD__(true), true);
+    assert.strictEqual(sharedSession.has("robin_reload_home_tab"), true);
+    assert.strictEqual(envSettings.windowObj.__ROBIN_PREPARE_RELOAD__(false), false);
+    assert.strictEqual(
+      sharedSession.has("robin_reload_home_tab"),
+      false,
+      "Settings-triggered reload (preserveHomeTab=false) must clear robin_reload_home_tab"
+    );
+  }
+
+  // 9e. Non-home route clears any stale robin_reload_home_tab
+  {
+    const sharedSession = new Map([
+      ["robin_reload_home_tab", JSON.stringify({ label: "ai news", ts: Date.now() })],
+    ]);
+    const envNonHome = createSandbox(
+      { forceFollowing: true, hidePageHeader: false },
+      "/alice/status/123",
+      sharedSession
+    );
+    assert.strictEqual(
+      envNonHome.windowObj.__ROBIN_PREPARE_RELOAD__(true),
+      false,
+      "Non-home route must return false from __ROBIN_PREPARE_RELOAD__"
+    );
+    assert.strictEqual(
+      sharedSession.has("robin_reload_home_tab"),
+      false,
+      "Non-home route must clear stale robin_reload_home_tab"
+    );
+  }
+
+  // 10. Virtualizer-safe CSS & strict scroll-jump protection
+  {
+    const cssText = fs.readFileSync(
+      path.resolve(__dirname, "../ios/Robin/Resources/x-filter/filter-core.css"),
+      "utf8"
+    );
+    assert(
+      cssText.includes('[data-testid="cellInnerDiv"][data-mt-quality-hide="1"]') &&
+        cssText.includes("height: 1px !important;") &&
+        cssText.includes('[data-testid="cellInnerDiv"][data-mt-quality-hide="1"] > *') &&
+        cssText.includes("display: none !important;"),
+      "filter-core.css must define virtualizer-safe 1px collapse for cellInnerDiv and hide children"
+    );
+
+    const scrollEnv = createSandbox({
+      forceFollowing: false,
+      hideForYouTab: false,
+      preferLatest: false,
+      forYouQualityFilter: "ai",
+    });
+    let scrollerUpdates = 0;
+    const rafQueue = [];
+    scrollEnv.windowObj.scroller = {
+      _update() {
+        scrollerUpdates += 1;
+      },
+    };
+    scrollEnv.windowObj.requestAnimationFrame = (cb) => rafQueue.push(cb);
+    function flushRaf() {
+      let guard = 0;
+      while (rafQueue.length && guard < 10) {
+        guard += 1;
+        const batch = rafQueue.splice(0, rafQueue.length);
+        for (const fn of batch) fn();
+      }
+    }
+
+    const partialTopCell = createTweetCell("slop_partial", "11001", "Partially above viewport slop");
+    partialTopCell.setMockRect({ top: -120, bottom: 140, left: 0, right: 390, width: 390, height: 260 });
+
+    const inViewCell = createTweetCell("slop_inview", "11002", "In viewport slop while scrolled");
+    inViewCell.setMockRect({ top: 100, bottom: 350, left: 0, right: 390, width: 390, height: 250 });
+
+    const belowCell1 = createTweetCell("slop_below1", "11003", "Strictly below viewport slop 1");
+    belowCell1.setMockRect({ top: 950, bottom: 1200, left: 0, right: 390, width: 390, height: 250 });
+
+    const belowCell2 = createTweetCell("slop_below2", "11004", "Strictly below viewport slop 2");
+    belowCell2.setMockRect({ top: 1250, bottom: 1500, left: 0, right: 390, width: 390, height: 250 });
+
+    for (const c of [partialTopCell, inViewCell, belowCell1, belowCell2]) {
+      scrollEnv.bodyEl.appendChild(c);
+    }
+
+    // Boot HomeTimeline first while at scrollY = 0
+    const sp = scrollEnv.windowObj.fetch(
+      "https://x.com/i/api/graphql/abc123/HomeTimeline?variables=%7B%7D"
+    );
+    scrollEnv.fetchResolvers[0].resolve({
+      clone: () => ({
+        text: async () =>
+          JSON.stringify({
+            data: {
+              home: {
+                home_timeline_urt: {
+                  instructions: [
+                    {
+                      entries: [
+                        makeGraphQLEntry({ id: "11001", handle: "slop_partial", text: "Partially above viewport slop" }),
+                        makeGraphQLEntry({ id: "11002", handle: "slop_inview", text: "In viewport slop while scrolled" }),
+                        makeGraphQLEntry({ id: "11003", handle: "slop_below1", text: "Strictly below viewport slop 1" }),
+                        makeGraphQLEntry({ id: "11004", handle: "slop_below2", text: "Strictly below viewport slop 2" }),
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+      }),
+    });
+    await sp;
+    await new Promise((r) => setImmediate(r));
+
+    // User has scrolled down to scrollY = 500 before async verdicts return
+    scrollEnv.windowObj.scrollY = 500;
+    scrollEnv.windowObj.__ROBIN_APPLY_FEED_FILTER__({
+      keptIds: [],
+      hidden: [
+        { id: "11001", handle: "slop_partial", reason: "ai_slop", accountWide: false },
+        { id: "11002", handle: "slop_inview", reason: "ai_slop", accountWide: false },
+        { id: "11003", handle: "slop_below1", reason: "ai_slop", accountWide: false },
+        { id: "11004", handle: "slop_below2", reason: "ai_slop", accountWide: false },
+      ],
+    });
+
+    assert.strictEqual(
+      partialTopCell.getAttribute("data-mt-quality-hide"),
+      null,
+      "Partially-above-viewport cell must not collapse on async verdict"
+    );
+    assert.strictEqual(
+      inViewCell.getAttribute("data-mt-quality-hide"),
+      null,
+      "In-viewport cell while scrolled (scrollY > 4) must not collapse on async verdict"
+    );
+    assert.strictEqual(
+      belowCell1.getAttribute("data-mt-quality-hide"),
+      "1",
+      "Strictly below-viewport cell 1 must collapse cleanly"
+    );
+    assert.strictEqual(
+      belowCell2.getAttribute("data-mt-quality-hide"),
+      "1",
+      "Strictly below-viewport cell 2 must collapse cleanly"
+    );
+    assert.strictEqual(scrollerUpdates, 0, "Scroller nudge must wait for double rAF");
+    flushRaf();
+    assert.strictEqual(
+      scrollerUpdates,
+      1,
+      "Multiple hides in one pass must debounce to a single window.scroller._update() call"
+    );
+
+    // Move already-hidden belowCell1 above viewport, then force a background tick()/filterCell() pass
+    belowCell1.setMockRect({ top: -300, bottom: -299, left: 0, right: 390, width: 390, height: 1 });
+    scrollEnv.windowObj.__ROBIN_ON_SETTINGS__();
+    flushRaf();
+
+    assert.strictEqual(
+      partialTopCell.getAttribute("data-mt-quality-hide"),
+      null,
+      "Partially-above-viewport cell must remain uncollapsed during background tick()/filterCell()"
+    );
+    assert.strictEqual(
+      inViewCell.getAttribute("data-mt-quality-hide"),
+      null,
+      "In-viewport cell while scrolled must remain uncollapsed during background tick()/filterCell()"
+    );
+    assert.strictEqual(
+      belowCell1.getAttribute("data-mt-quality-hide"),
+      "1",
+      "Already-hidden cell must stay hidden even after scrolling above viewport during tick()"
+    );
+
+    // Explicit user reveal toggles still reveal all filtered cells (including previously hidden) and nudge scroller
+    const prevUpdates = scrollerUpdates;
+    scrollEnv.windowObj.__ROBIN_SET_REVEAL_SLOP__(true);
+    flushRaf();
+    assert(
+      scrollerUpdates > prevUpdates,
+      "__ROBIN_SET_REVEAL_SLOP__(true) restoring hidden cells must nudge window.scroller._update()"
+    );
+  }
 
   console.log("ALL FOR YOU QUALITY FILTER TESTS PASSED!");
 }

@@ -464,6 +464,17 @@ private fun isFeedHome(url: String?): Boolean {
     }
 }
 
+private fun isReloadableUrl(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    return try {
+        val uri = android.net.Uri.parse(url)
+        val scheme = uri.scheme?.lowercase(Locale.US)
+        (scheme == "http" || scheme == "https") && !uri.host.isNullOrBlank()
+    } catch (_: Exception) {
+        false
+    }
+}
+
 /** Feed type / ordering / content filters that need a home reload to fully apply. */
 private fun feedReloadFingerprint(s: FilterSettings): List<Boolean> = listOf(
     s.forceFollowing,
@@ -905,6 +916,7 @@ fun XWebFeedScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var warmReloadJob by remember { mutableStateOf<Job?>(null) }
+    val reloadGen = remember { intArrayOf(0) }
     val lastInteractionAtMs = remember { longArrayOf(System.currentTimeMillis()) }
     var isResumed by remember {
         mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
@@ -975,14 +987,24 @@ fun XWebFeedScreen(
         showScrollTop = false
     }
 
+    fun noteUserInteraction() {
+        lastInteractionAtMs[0] = System.currentTimeMillis()
+    }
+
     fun cancelWarmReload() {
         warmReloadJob?.cancel()
         warmReloadJob = null
         suppressNextHomeBootCoverState.value = false
     }
 
-    fun hardReloadFeed(warm: Boolean, markRefresh: Boolean = true) {
+    fun hardReloadFeed(
+        warm: Boolean,
+        markRefresh: Boolean = true,
+        targetUrl: String = X_HOME,
+        preserveHomeTab: Boolean = false,
+    ) {
         val wv = webViewRef ?: return
+        val gen = ++reloadGen[0]
         if (markRefresh) lastFeedRefreshAtMs = System.currentTimeMillis()
         welcomeAutoRetryUsed = false
         qualityFilteredCount = 0
@@ -991,24 +1013,70 @@ fun XWebFeedScreen(
         warmReloadJob = null
 
         fun doLoad() {
-            // reload() can reuse a cached document; force a network home load.
+            if (gen != reloadGen[0]) return
+            // reload() can reuse a cached document; force a network load.
             val previous = wv.settings.cacheMode
             wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE
-            wv.loadUrl(X_HOME)
+            wv.loadUrl(targetUrl)
             wv.post { wv.settings.cacheMode = previous }
         }
 
-        if (warm && wv.width > 0 && wv.height > 0) {
-            suppressNextHomeBootCoverState.value = true
-            warmReloadJob = scope.launch {
-                doLoad()
-                delay(5_500)
+        fun startLoad() {
+            if (gen != reloadGen[0]) return
+            if (warm && wv.width > 0 && wv.height > 0) {
+                suppressNextHomeBootCoverState.value = true
+                warmReloadJob = scope.launch {
+                    doLoad()
+                    delay(5_500)
+                    suppressNextHomeBootCoverState.value = false
+                }
+            } else {
                 suppressNextHomeBootCoverState.value = false
+                doLoad()
+            }
+        }
+
+        if (!showBootCover) {
+            val preserveLiteral = if (preserveHomeTab) "true" else "false"
+            wv.evaluateJavascript(
+                "window.__ROBIN_PREPARE_RELOAD__ && window.__ROBIN_PREPARE_RELOAD__($preserveLiteral);",
+            ) {
+                startLoad()
             }
         } else {
-            suppressNextHomeBootCoverState.value = false
-            doLoad()
+            startLoad()
         }
+    }
+
+    fun reloadCurrentView() {
+        noteUserInteraction()
+        val wv = webViewRef ?: return
+        val currentUrl = wv.url?.takeIf(::isReloadableUrl) ?: pageUrl?.takeIf(::isReloadableUrl)
+        if (currentUrl == null) {
+            hardReloadFeed(warm = !showBootCover, preserveHomeTab = false)
+            return
+        }
+        if (isFeedHome(currentUrl)) {
+            hardReloadFeed(
+                warm = !showBootCover,
+                markRefresh = true,
+                targetUrl = currentUrl,
+                preserveHomeTab = true,
+            )
+            return
+        }
+        reloadGen[0]++
+        qualityFilteredCount = 0
+        revealFilteredSlop = false
+        cancelWarmReload()
+        val previous = wv.settings.cacheMode
+        wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        if (isReloadableUrl(wv.url)) {
+            wv.reload()
+        } else {
+            wv.loadUrl(currentUrl)
+        }
+        wv.post { wv.settings.cacheMode = previous }
     }
 
     /**
@@ -1045,7 +1113,7 @@ fun XWebFeedScreen(
         if (!isFeedHome(pageUrl)) return
         cancelWarmReload()
         pendingFeedSettingsReload = false
-        hardReloadFeed(warm = false, markRefresh = false)
+        hardReloadFeed(warm = false, markRefresh = false, preserveHomeTab = false)
     }
 
     fun canRefreshFeedNow(): Boolean {
@@ -1065,10 +1133,6 @@ fun XWebFeedScreen(
         return webViewRef != null
     }
 
-    fun noteUserInteraction() {
-        lastInteractionAtMs[0] = System.currentTimeMillis()
-    }
-
     /** Automatic refreshes wait until the user has left the feed alone. */
     fun userIsIdle(): Boolean {
         if (infoPresented) return false
@@ -1081,7 +1145,7 @@ fun XWebFeedScreen(
         if (!userInitiated && !userIsIdle()) return
         // Pill auto-click already handles “Show N posts” when X paints it.
         // Host-driven refresh must force a network fetch.
-        hardReloadFeed(warm = true)
+        hardReloadFeed(warm = true, preserveHomeTab = true)
     }
 
     /** Back-to-top only — native header stays visible. */
@@ -1100,8 +1164,19 @@ fun XWebFeedScreen(
         }
     }
 
+    var previousForceFollowing by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(filterSettings, fontScale) {
-        webViewRef?.let { XFilterInjector.applySettingsOnly(it, filterSettings, fontScale) }
+        val prev = previousForceFollowing
+        previousForceFollowing = filterSettings.forceFollowing
+        val resetPickedTab = prev != null && prev != filterSettings.forceFollowing
+        webViewRef?.let {
+            XFilterInjector.applySettingsOnly(
+                it,
+                filterSettings,
+                fontScale,
+                resetPickedTab = resetPickedTab,
+            )
+        }
     }
 
     LaunchedEffect(infoPresented) {
@@ -1368,7 +1443,7 @@ fun XWebFeedScreen(
                         )
                     }
                     IconButton(
-                        onClick = { hardReloadFeed(warm = !showBootCover) },
+                        onClick = { reloadCurrentView() },
                         modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
