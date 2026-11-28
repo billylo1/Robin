@@ -212,9 +212,14 @@ function createTweetCell(handle, id, text) {
 function makeGraphQLEntry({
   id,
   handle,
+  name = null,
   text,
   bio = "",
   following = false,
+  followers = 5000,
+  friends = 200,
+  defaultProfileImage = false,
+  verifiedType = null,
   hashtags = [],
   promoted = false,
   hasMedia = false,
@@ -225,6 +230,7 @@ function makeGraphQLEntry({
   statusesCount = 500,
   userCreatedAt = "Mon Jan 01 00:00:00 +0000 2024",
 }) {
+  const displayName = name === null ? handle : name;
   const result = {
     __typename: "Tweet",
     rest_id: id,
@@ -233,14 +239,16 @@ function makeGraphQLEntry({
         result: {
           is_blue_verified: true,
           relationship_perspectives: { following },
-          core: { screen_name: handle, name: handle, created_at: userCreatedAt },
+          core: { screen_name: handle, name: displayName, created_at: userCreatedAt },
           legacy: {
             screen_name: handle,
-            name: handle,
+            name: displayName,
             description: bio,
-            followers_count: 5000,
-            friends_count: 200,
+            followers_count: followers,
+            friends_count: friends,
             statuses_count: statusesCount,
+            default_profile_image: defaultProfileImage,
+            ...(verifiedType ? { verified_type: verifiedType } : {}),
             created_at: userCreatedAt,
           },
         },
@@ -1609,6 +1617,128 @@ async function runTests() {
       scrollerUpdates > prevUpdates,
       "__ROBIN_SET_REVEAL_SLOP__(true) restoring hidden cells must nudge window.scroller._update()"
     );
+  }
+
+  // 11. Bot-account heuristic rules (Tier 1) & Tier 2 flags
+  {
+    const daysAgoDate = (days) => new Date(Date.now() - days * 86400000).toUTCString();
+    const botEnv = createSandbox({
+      forceFollowing: false,
+      hideForYouTab: false,
+      preferLatest: false,
+      forYouQualityFilter: "ai",
+    });
+
+    const botEntries = [
+      { id: "12001", handle: "JohnSmith84729103", name: "JohnSmith84729103", bio: "", followers: 12, expectedReason: "bot_handle" },
+      { id: "12002", handle: "Sarah94827163", name: "Sarah Miller", defaultProfileImage: true, bio: "", followers: 40, expectedReason: "bot_handle" },
+      { id: "12003", handle: "Alex48291057", name: "Alex", bio: "", followers: 100, expectedReason: "bot_handle" },
+      { id: "12004", handle: "crypto_48291", name: "🚀🚀🚀", bio: "", followers: 30, expectedReason: "bot_handle" },
+      { id: "12005", handle: "user_928371", name: "User 928371", bio: "Tech fan", followers: 40, expectedReason: "bot_handle" },
+      { id: "12006", handle: "normalhandle", name: "🔥🔥", defaultProfileImage: true, bio: "", followers: 50, expectedReason: "bot_profile" },
+      { id: "12007", handle: "followback_x", name: "Mike", friends: 1200, followers: 18, bio: "", userCreatedAt: daysAgoDate(15), expectedReason: "bot_account" },
+      { id: "12008", handle: "spammer99", name: "Crypto Signals", statusesCount: 1500, userCreatedAt: daysAgoDate(10), bio: "", followers: 5, expectedReason: "bot_account" },
+    ];
+
+    const humanEntries = [
+      { id: "12101", handle: "jane_smith1992", name: "Jane Smith", bio: "", followers: 8, userCreatedAt: daysAgoDate(20) },
+      { id: "12102", handle: "newbie_coder", name: "Sam Patel", bio: "Learning Swift", defaultProfileImage: true, followers: 5, statusesCount: 15, userCreatedAt: daysAgoDate(10) },
+      { id: "12103", handle: "JaneDoe84729103", name: "Jane Doe", bio: "Teacher in Austin", followers: 80, userCreatedAt: daysAgoDate(400) },
+      { id: "12104", handle: "tanaka_dev", name: "田中太郎", bio: "", followers: 12, userCreatedAt: daysAgoDate(15) },
+      { id: "12105", handle: "bigaccount84729103", name: "84729103", bio: "", followers: 6000 },
+      { id: "12106", handle: "corp_84729103", name: "", bio: "", followers: 200, verifiedType: "Business" },
+      { id: "12107", handle: "JohnSmith84729103", name: "JohnSmith84729103", bio: "", followers: 12, following: true },
+    ];
+
+    const botCells = new Map();
+    const humanCells = new Map();
+    const gqlEntries = [];
+    for (const b of botEntries) {
+      const cell = createTweetCell(b.handle, b.id, "Interesting market update on AI trends today.");
+      botEnv.bodyEl.appendChild(cell);
+      botCells.set(b.id, { cell, ...b });
+      gqlEntries.push(makeGraphQLEntry({ ...b, text: "Interesting market update on AI trends today." }));
+    }
+    for (const h of humanEntries) {
+      const cell = createTweetCell(h.handle, h.id, "Writing some unit tests for my side project this weekend.");
+      botEnv.bodyEl.appendChild(cell);
+      humanCells.set(h.id, { cell, ...h });
+      gqlEntries.push(makeGraphQLEntry({ ...h, text: "Writing some unit tests for my side project this weekend." }));
+    }
+
+    const bp = botEnv.windowObj.fetch(
+      "https://x.com/i/api/graphql/abc123/HomeTimeline?variables=%7B%7D"
+    );
+    botEnv.fetchResolvers[0].resolve({
+      clone: () => ({
+        text: async () =>
+          JSON.stringify({
+            data: { home: { home_timeline_urt: { instructions: [{ entries: gqlEntries }] } } },
+          }),
+      }),
+    });
+    await bp;
+    await new Promise((r) => setImmediate(r));
+
+    for (const [id, item] of botCells.entries()) {
+      assert.strictEqual(
+        item.cell.getAttribute("data-mt-quality-hide"),
+        "1",
+        `Bot account @${item.handle} (${id}) must be caught & hidden in Tier 1`
+      );
+    }
+
+    // Bots must NOT be sent to Tier 2 AI; non-followed humans go to Tier 2 unflagged by Tier 1
+    assert.strictEqual(botEnv.aiBatches.length, 1);
+    const aiIds = Array.from(botEnv.aiBatches[0].posts, (p) => p.id);
+    assert.deepStrictEqual(
+      aiIds,
+      ["12101", "12102", "12103", "12104", "12105", "12106"],
+      "Only unfollowed human-looking accounts (not Tier 1 bots or followed accounts) should reach Tier 2"
+    );
+    for (const h of humanEntries) {
+      assert.strictEqual(
+        humanCells.get(h.id).cell.getAttribute("data-mt-quality-hide"),
+        null,
+        `Real/exempt account @${h.handle} (${h.id}) must NOT be locally hidden`
+      );
+    }
+
+    // Verify reveal badge displays "Filtered · Likely bot account" for bot reasons
+    botEnv.windowObj.__ROBIN_SET_REVEAL_SLOP__(true);
+    for (const id of ["12001", "12006", "12007"]) {
+      assert.strictEqual(
+        botCells.get(id).cell.getAttribute("data-mt-quality-label"),
+        "Filtered \u00b7 Likely bot account"
+      );
+    }
+
+    // Tier 2 functions/index.js flags: default_avatar & no_bio emitted only when true/empty
+    const reqWithFlags = fnInternal.buildDecisionRequest([
+      fnInternal.sanitizePost({
+        id: "13001",
+        handle: "edge_case",
+        name: "Edge",
+        bio: "",
+        defaultProfileImage: true,
+        text: "Some ambiguous claim to evaluate.",
+      }),
+      fnInternal.sanitizePost({
+        id: "13002",
+        handle: "complete_profile",
+        name: "Complete",
+        bio: "Real engineer",
+        defaultProfileImage: false,
+        text: "Some other claim to evaluate.",
+      }),
+    ]);
+    assert(reqWithFlags.input.includes("default_avatar"), "default_avatar flag must appear for default avatar posts");
+    assert(reqWithFlags.input.includes("no_bio"), "no_bio flag must appear when bio is empty");
+    const lines = reqWithFlags.input.split("\n");
+    const p0Header = lines.find((l) => l.startsWith("[P0]")) || "";
+    const p1Header = lines.find((l) => l.startsWith("[P1]")) || "";
+    assert(p0Header.includes("default_avatar") && p0Header.includes("no_bio"));
+    assert(!p1Header.includes("default_avatar") && !p1Header.includes("no_bio"));
   }
 
   console.log("ALL FOR YOU QUALITY FILTER TESTS PASSED!");

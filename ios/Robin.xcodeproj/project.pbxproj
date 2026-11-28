@@ -65,7 +65,7 @@
 		E7DCF4F26AAD3D386F5BCCD7 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		F3E22E8D646E250837757F79 /* Robin.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Robin.entitlements; sourceTree = "<group>"; };
 		FB76E59A7154998AEA2DEA8E /* Robin.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Robin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		"TEMP_AD11B41C-EAAB-4898-B46A-5632038846AA" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
+		"TEMP_2D3D06CF-61E5-477D-B89A-DABF6EB12BC0" /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,10 +181,10 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		"TEMP_E1A751AD-21A8-4690-8465-D7989D340A28" /* ios */ = {
+		"TEMP_7209839C-74C6-4FC3-AB3E-FDD64C8B8CF9" /* ios */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_AD11B41C-EAAB-4898-B46A-5632038846AA" /* Config.xcconfig */,
+				"TEMP_2D3D06CF-61E5-477D-B89A-DABF6EB12BC0" /* Config.xcconfig */,
 			);
 			path = ios;
 			sourceTree = "<group>";
@@ -307,7 +307,7 @@
 				CODE_SIGN_ENTITLEMENTS = Robin/Robin.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEVELOPMENT_TEAM = X5J5T5UT6J;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Robin/Info.plist;
@@ -315,7 +315,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.40;
+				MARKETING_VERSION = 0.2.41;
 				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = org.evergreenlabs.robin;
 				PRODUCT_NAME = Robin;
@@ -333,7 +333,7 @@
 				CODE_SIGN_ENTITLEMENTS = Robin/RobinRelease.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEVELOPMENT_TEAM = X5J5T5UT6J;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Robin/Info.plist;
@@ -341,7 +341,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.2.40;
+				MARKETING_VERSION = 0.2.41;
 				OTHER_LDFLAGS = "$(inherited) -ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = org.evergreenlabs.robin;
 				PRODUCT_NAME = Robin;
@@ -353,7 +353,7 @@
 		};
 		C47C3DAB46D9040153520C7E /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_AD11B41C-EAAB-4898-B46A-5632038846AA" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_2D3D06CF-61E5-477D-B89A-DABF6EB12BC0" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -411,7 +411,7 @@
 		};
 		D80246C00E14E3392654CD99 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_AD11B41C-EAAB-4898-B46A-5632038846AA" /* Config.xcconfig */;
+			baseConfigurationReference = "TEMP_2D3D06CF-61E5-477D-B89A-DABF6EB12BC0" /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

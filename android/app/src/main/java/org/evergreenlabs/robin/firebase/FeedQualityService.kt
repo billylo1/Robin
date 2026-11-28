@@ -38,6 +38,7 @@ data class FeedQualityPost(
     val urlDomains: List<String>? = null,
     val statusesPerDay: Double? = null,
     val accountAgeDays: Int? = null,
+    val defaultProfileImage: Boolean? = null,
     val text: String? = null,
     val quotedText: String? = null,
 )

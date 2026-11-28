@@ -45,8 +45,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.evergreenlabs.robin
         PRODUCT_NAME: Robin
-        MARKETING_VERSION: "0.2.40"
-        CURRENT_PROJECT_VERSION: "80"
+        MARKETING_VERSION: "0.2.41"
+        CURRENT_PROJECT_VERSION: "81"
         INFOPLIST_FILE: Robin/Info.plist
         CODE_SIGN_ENTITLEMENTS: Robin/Robin.entitlements
         GENERATE_INFOPLIST_FILE: NO

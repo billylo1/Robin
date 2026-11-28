@@ -20,6 +20,7 @@ struct FeedQualityPost: Codable, Sendable {
     var urlDomains: [String]?
     var statusesPerDay: Double?
     var accountAgeDays: Int?
+    var defaultProfileImage: Bool?
     var text: String?
     var quotedText: String?
 }

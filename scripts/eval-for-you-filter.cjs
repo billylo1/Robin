@@ -30,7 +30,98 @@ const RE_BAIT_CTA =
 const RE_USELESS_SHORT =
   /^(?:this\.?|facts\.?|100%|true\.?|so true\.?|real\.?|agreed\.?|agree\??|lfg!?|wow!?|insane!?|crazy!?|huge if true\.?|based\.?|same\.?|yes\.?|no\.?|exact(?:ly)?\.?|[\s!?.,\u2600-\u27bf\ud83c-\ud83e\udc00-\udfff]+)$/i;
 const RE_BOT_BIO =
-  /\b(?:automated\s+account|bot\s+account|parody\s+account|daily\s+ai\s+news|dm\s+for\s+promo|paid\s+promo)\b/i;
+  /\b(?:automated\s+account|bot\s+account|parody\s+account|daily\s+ai\s+news|dm\s+for\s+promo|paid\s+promo|ai\s+bot|news\s+bot|repost\s+bot|auto-?posting)\b/i;
+const RE_HAS_LETTER = /\p{L}/u;
+const RE_GENERIC_HANDLE =
+  /^(?:user|account|guest|member|twitter|xuser|anon|bot)[_-]?\d{4,}$/i;
+const RE_GENERIC_NAME =
+  /^(?:user|account|guest|member|anonymous|anon|no\s*name|unnamed)[\s_-]*\d*$/i;
+
+function isGenericDefaultHandle(handle) {
+  const h = String(handle || "").replace(/^@/, "").trim();
+  return Boolean(h && RE_GENERIC_HANDLE.test(h));
+}
+
+function hasLongDigitHandle(handle) {
+  const h = String(handle || "").replace(/^@/, "").trim();
+  if (!h) return false;
+  if (/\d{7,}$/.test(h)) return true;
+  const digits = h.replace(/\D/g, "");
+  return digits.length >= 8 && digits.length >= h.length * 0.5;
+}
+
+function hasMediumTrailingDigits(handle) {
+  const h = String(handle || "").replace(/^@/, "").trim();
+  return Boolean(h && /\d{5,6}$/.test(h));
+}
+
+function hasNoRealName(name, handle) {
+  const trimmed = String(name || "").replace(/\s+/g, " ").trim();
+  if (!trimmed) return true;
+  if (!RE_HAS_LETTER.test(trimmed)) return true;
+  if (RE_GENERIC_NAME.test(trimmed)) return true;
+  if (!trimmed.includes(" ") && /\d{5,}/.test(trimmed)) return true;
+  const normHandle = String(handle || "")
+    .replace(/^@/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  const normName = trimmed.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (
+    normHandle &&
+    normName &&
+    normName === normHandle &&
+    (/\d{5,}/.test(normHandle) || isGenericDefaultHandle(handle))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function evaluateBotAccount(meta, verifiedType) {
+  if (!meta) return "";
+  const vt = String(verifiedType || "").toLowerCase();
+  if (vt === "business" || vt === "government") return "";
+  if (typeof meta.followers === "number" && meta.followers >= 5000) return "";
+
+  let score = 0;
+  const handle = meta.handle || "";
+  let handleScore = 0;
+  if (isGenericDefaultHandle(handle) || hasLongDigitHandle(handle)) {
+    handleScore = 3;
+  } else if (hasMediumTrailingDigits(handle)) {
+    handleScore = 2;
+  }
+  score += handleScore;
+
+  const noRealName = hasNoRealName(meta.name, handle);
+  if (noRealName) score += 2;
+  if (meta.defaultProfileImage) score += 2;
+  if (!meta.bio || !String(meta.bio).trim()) score += 1;
+  if (
+    typeof meta.friends === "number" &&
+    typeof meta.followers === "number" &&
+    meta.friends >= 300 &&
+    meta.followers < 50 &&
+    meta.friends >= meta.followers * 10
+  ) {
+    score += 2;
+  }
+  if (typeof meta.statusesPerDay === "number") {
+    if (meta.statusesPerDay >= 100) score += 3;
+    else if (meta.statusesPerDay >= 50) score += 2;
+  }
+  if (
+    (typeof meta.accountAgeDays === "number" && meta.accountAgeDays <= 30) ||
+    (typeof meta.followers === "number" && meta.followers < 15)
+  ) {
+    score += 1;
+  }
+
+  if (score < 4) return "";
+  if (handleScore > 0) return "bot_handle";
+  if (noRealName) return "bot_profile";
+  return "bot_account";
+}
 
 function countHashtags(text) {
   const m = String(text || "").match(/(?:^|\s)#[A-Za-z0-9_]+/g);
@@ -106,6 +197,7 @@ function buildMetaFromPost(p) {
     urlDomains,
     statusesPerDay: Number.isFinite(p.statusesPerDay) ? p.statusesPerDay : null,
     accountAgeDays: Number.isFinite(p.accountAgeDays) ? p.accountAgeDays : null,
+    defaultProfileImage: Boolean(p.defaultProfileImage),
     text: rawText,
     quotedText: p.quotedText || "",
   });
@@ -116,12 +208,13 @@ function buildMetaFromPost(p) {
     hasUrls,
     following: Boolean(p.following),
     isAd: Boolean(p.isAd),
+    verifiedType: p.verifiedType || "",
   };
 }
 
 function evaluateLocalHeuristic(entry) {
   if (!entry || entry.following || entry.isAd) return null;
-  const { meta, rawText, hasUrls } = entry;
+  const { meta, rawText, hasUrls, verifiedType } = entry;
   const hashtags = meta.hashtagCount || 0;
   const nonHashtagLen = rawText
     .replace(/#[A-Za-z0-9_]+/g, "")
@@ -143,6 +236,8 @@ function evaluateLocalHeuristic(entry) {
     return "useless_short";
   }
   if (meta.bio && RE_BOT_BIO.test(meta.bio)) return "bot_bio";
+  const botReason = evaluateBotAccount(meta, verifiedType);
+  if (botReason) return botReason;
   return null;
 }
 

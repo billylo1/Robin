@@ -261,6 +261,9 @@
     hashtag_spam: "Filtered \u00b7 Hashtag spam",
     mention_pod_spam: "Filtered \u00b7 Mention spam",
     bot_bio: "Filtered \u00b7 Bot account",
+    bot_handle: "Filtered \u00b7 Likely bot account",
+    bot_profile: "Filtered \u00b7 Likely bot account",
+    bot_account: "Filtered \u00b7 Likely bot account",
     cached_acct: "Filtered \u00b7 Repeat offender",
     unfactual_claim: "Filtered \u00b7 Unfactual / misleading",
     invalid_argument: "Filtered \u00b7 Flawed argument",
@@ -328,7 +331,7 @@
   var RE_QUALITY_USELESS_SHORT =
     /^(?:this\.?|facts\.?|100%|true\.?|so true\.?|real\.?|agreed\.?|agree\??|lfg!?|wow!?|insane!?|crazy!?|huge if true\.?|based\.?|same\.?|yes\.?|no\.?|exact(?:ly)?\.?|[\s!?.,\u2600-\u27bf\ud83c-\ud83e\udc00-\udfff]+)$/i;
   var RE_QUALITY_BOT_BIO =
-    /\b(?:automated\s+account|bot\s+account|parody\s+account|daily\s+ai\s+news|dm\s+for\s+promo|paid\s+promo)\b/i;
+    /\b(?:automated\s+account|bot\s+account|parody\s+account|daily\s+ai\s+news|dm\s+for\s+promo|paid\s+promo|ai\s+bot|news\s+bot|repost\s+bot|auto-?posting)\b/i;
 
   function qualityFilterMode(settings) {
     var s = settings || currentSettings();
@@ -411,7 +414,109 @@
     return out;
   }
 
-  function evaluateLocalQuality(meta, rawText) {
+  var RE_HAS_LETTER = (function () {
+    try {
+      return new RegExp("\\p{L}", "u");
+    } catch (e) {
+      return /[A-Za-z]/;
+    }
+  })();
+  var RE_GENERIC_HANDLE =
+    /^(?:user|account|guest|member|twitter|xuser|anon|bot)[_-]?\d{4,}$/i;
+  var RE_GENERIC_NAME =
+    /^(?:user|account|guest|member|anonymous|anon|no\s*name|unnamed)[\s_-]*\d*$/i;
+
+  function isGenericDefaultHandle(handle) {
+    var h = String(handle || "").replace(/^@/, "").trim();
+    return Boolean(h && RE_GENERIC_HANDLE.test(h));
+  }
+
+  function hasLongDigitHandle(handle) {
+    var h = String(handle || "").replace(/^@/, "").trim();
+    if (!h) return false;
+    if (/\d{7,}$/.test(h)) return true;
+    var digits = h.replace(/\D/g, "");
+    return digits.length >= 8 && digits.length >= h.length * 0.5;
+  }
+
+  function hasMediumTrailingDigits(handle) {
+    var h = String(handle || "").replace(/^@/, "").trim();
+    return Boolean(h && /\d{5,6}$/.test(h));
+  }
+
+  function hasNoRealName(name, handle) {
+    var trimmed = String(name || "").replace(/\s+/g, " ").trim();
+    if (!trimmed) return true;
+    if (!RE_HAS_LETTER.test(trimmed)) return true;
+    if (RE_GENERIC_NAME.test(trimmed)) return true;
+    if (trimmed.indexOf(" ") === -1 && /\d{5,}/.test(trimmed)) return true;
+    var normHandle = String(handle || "")
+      .replace(/^@/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+    var normName = trimmed.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (
+      normHandle &&
+      normName &&
+      normName === normHandle &&
+      (/\d{5,}/.test(normHandle) || isGenericDefaultHandle(handle))
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  function evaluateBotAccount(meta, accountExtra) {
+    if (!meta || meta.following) return "";
+    var vt = String(
+      (accountExtra && accountExtra.verifiedType) ||
+        meta.verifiedType ||
+        ""
+    ).toLowerCase();
+    if (vt === "business" || vt === "government") return "";
+    if (typeof meta.followers === "number" && meta.followers >= 5000) return "";
+
+    var score = 0;
+    var handle = meta.handle || "";
+    var handleScore = 0;
+    if (isGenericDefaultHandle(handle) || hasLongDigitHandle(handle)) {
+      handleScore = 3;
+    } else if (hasMediumTrailingDigits(handle)) {
+      handleScore = 2;
+    }
+    score += handleScore;
+
+    var noRealName = hasNoRealName(meta.name, handle);
+    if (noRealName) score += 2;
+    if (meta.defaultProfileImage) score += 2;
+    if (!meta.bio || !String(meta.bio).trim()) score += 1;
+    if (
+      typeof meta.friends === "number" &&
+      typeof meta.followers === "number" &&
+      meta.friends >= 300 &&
+      meta.followers < 50 &&
+      meta.friends >= meta.followers * 10
+    ) {
+      score += 2;
+    }
+    if (typeof meta.statusesPerDay === "number") {
+      if (meta.statusesPerDay >= 100) score += 3;
+      else if (meta.statusesPerDay >= 50) score += 2;
+    }
+    if (
+      (typeof meta.accountAgeDays === "number" && meta.accountAgeDays <= 30) ||
+      (typeof meta.followers === "number" && meta.followers < 15)
+    ) {
+      score += 1;
+    }
+
+    if (score < 4) return "";
+    if (handleScore > 0) return "bot_handle";
+    if (noRealName) return "bot_profile";
+    return "bot_account";
+  }
+
+  function evaluateLocalQuality(meta, rawText, accountExtra) {
     if (!meta || meta.following) return "";
     var text = typeof rawText === "string" ? rawText : meta.text || "";
     var hashtags = meta.hashtagCount || 0;
@@ -437,6 +542,8 @@
     if (meta.bio && RE_QUALITY_BOT_BIO.test(meta.bio)) {
       return "bot_bio";
     }
+    var botReason = evaluateBotAccount(meta, accountExtra);
+    if (botReason) return botReason;
     return "";
   }
 
@@ -564,6 +671,20 @@
       }
     }
 
+    var avatarUrl =
+      (sourceUser.avatar && sourceUser.avatar.image_url) ||
+      (sourceUser.legacy && sourceUser.legacy.profile_image_url_https) ||
+      "";
+    var defaultProfileImage = Boolean(
+      (sourceUser.legacy && sourceUser.legacy.default_profile_image) ||
+        /default_profile/i.test(avatarUrl)
+    );
+    var verifiedType = String(
+      (sourceUser.legacy && sourceUser.legacy.verified_type) ||
+        (sourceUser.verification && sourceUser.verification.verified_type) ||
+        ""
+    );
+
     var meta = {
       id: displayId,
       handle: handle,
@@ -590,11 +711,14 @@
       urlDomains: urlDomains,
       statusesPerDay: statusesPerDay,
       accountAgeDays: accountAgeDays,
+      defaultProfileImage: defaultProfileImage,
       text: text,
       quotedText: quotedText,
     };
 
-    var localReason = evaluateLocalQuality(meta, rawText);
+    var localReason = evaluateLocalQuality(meta, rawText, {
+      verifiedType: verifiedType,
+    });
     if (localReason) {
       rememberQualityDecision(displayId, "hide", localReason);
       noteQualityHidden(displayId, localReason);

@@ -30,7 +30,7 @@ const CATEGORY_CRITERIA = {
   keep:
     "Original human author sharing firsthand thoughts, work, engineering demos, research, paper/news analysis with real substance or sources, personal stories, or grounded commentary (including enthusiastic praise or questions when accompanied by real technical or domain substance).",
   non_human_aggregator:
-    "Content mill, automated news/clip repost farm, scraper ('by @...', 'via @...'), high-volume repost/curated-clip account, or bot/parody account primarily repackaging others' content without original analysis.",
+    "Content mill, automated news/clip repost farm, scraper ('by @...', 'via @...'), high-volume repost/curated-clip account, bot/spam account (e.g., auto-generated numeric handles, missing/nonsensical display names, default avatars, or automated posting velocity), or parody account primarily repackaging noise without original human analysis.",
   engagement_bait:
     "Clickbait or rage-bait hook, DM/comment/bookmark/follow farming ('Comment X and I'll DM', 'Wrong answers only', sensationalist viral hooks designed solely to farm clicks or outrage).",
   useless_comment:
@@ -91,6 +91,7 @@ function sanitizePost(raw) {
     accountAgeDays: Number.isFinite(raw.accountAgeDays)
       ? Math.max(0, Math.floor(raw.accountAgeDays))
       : null,
+    defaultProfileImage: Boolean(raw.defaultProfileImage),
     text: sampleText(String(raw.text || ""), 460, 290, 160),
     quotedText: sampleText(String(raw.quotedText || ""), 180, 110, 60),
   };
@@ -126,6 +127,8 @@ function buildDecisionRequest(posts) {
     if (p.accountAgeDays !== null && p.accountAgeDays !== undefined && p.accountAgeDays < 365) {
       flags.push(`age=${p.accountAgeDays}d`);
     }
+    if (p.defaultProfileImage) flags.push("default_avatar");
+    if (!p.bio) flags.push("no_bio");
     if (Array.isArray(p.urlDomains) && p.urlDomains.length > 0) {
       flags.push(`links=${p.urlDomains.join(",")}`);
     }
@@ -143,7 +146,7 @@ function buildDecisionRequest(posts) {
     };
     questions[`p${i}_account_wide`] = {
       type: "noul",
-      instructions: `Is the author of post [${tag}] (@${p.handle || "unknown"}) clearly a non-human account, automated bot, viral clip/news aggregator, or repost content-mill (NOT an individual human author) whose future posts should always be hidden?`,
+      instructions: `Is the author of post [${tag}] (@${p.handle || "unknown"}) clearly a non-human account, automated bot (e.g., auto-generated numeric handle, missing/nonsensical display name, default avatar, or automated posting rate), viral clip/news aggregator, or repost content-mill (NOT an individual human author sharing real firsthand thoughts/work) whose future posts should always be hidden?`,
     };
     questions[`p${i}_unfactual`] = {
       type: "noul",
